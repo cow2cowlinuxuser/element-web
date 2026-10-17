@@ -611,6 +611,13 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         return MainSplitContentType.Timeline;
     };
 
+    private isMainTimelineShown = (room: Room, contentType = this.getMainSplitContentType(room)): boolean => {
+        return (
+            contentType === MainSplitContentType.Timeline ||
+            (contentType === MainSplitContentType.Call && !isVideoRoom(room))
+        );
+    };
+
     private onRoomViewStoreUpdate = async (initial?: boolean): Promise<void> => {
         if (this.unmounted) {
             return;
@@ -664,7 +671,8 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         };
 
         if (
-            newState.mainSplitContentType === MainSplitContentType.Timeline &&
+            room &&
+            this.isMainTimelineShown(room, newState.mainSplitContentType) &&
             this.context.rightPanelStore.isOpen &&
             this.context.rightPanelStore.currentCard.phase === RightPanelPhases.Timeline &&
             this.context.rightPanelStore.roomPhaseHistory.some((card) => card.phase === RightPanelPhases.Timeline)
@@ -789,7 +797,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
 
         if (
             room &&
-            this.getMainSplitContentType(room) !== MainSplitContentType.Timeline &&
+            !this.isMainTimelineShown(room, newState.mainSplitContentType) &&
             newState.initialEventId !== this.state.initialEventId
         ) {
             // Ensure the right panel timeline is open to show the linked event
@@ -1487,7 +1495,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         void this.updateRoomEncrypted(room);
 
         if (
-            this.getMainSplitContentType(room) !== MainSplitContentType.Timeline &&
+            !this.isMainTimelineShown(room) &&
             this.context.roomNotificationStateStore.getRoomState(room).isUnread
         ) {
             // Automatically open the chat panel to make unread messages easier to discover
@@ -2665,8 +2673,23 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
             );
         }
 
+        let { mainSplitContentType } = this.state;
+        if (this.state.search) {
+            // When in the middle of a search force the main split content type to timeline
+            mainSplitContentType = MainSplitContentType.Timeline;
+        }
+
+        const isDuplicateTimelineRightPanel =
+            this.state.room &&
+            this.isMainTimelineShown(this.state.room, mainSplitContentType) &&
+            this.context.rightPanelStore.currentCard.phase === RightPanelPhases.Timeline;
+
         const showRightPanel =
-            !this.props.hideRightPanel && !isRoomEncryptionLoading && this.state.room && this.state.showRightPanel;
+            !this.props.hideRightPanel &&
+            !isRoomEncryptionLoading &&
+            this.state.room &&
+            this.state.showRightPanel &&
+            !isDuplicateTimelineRightPanel;
 
         const rightPanel = showRightPanel ? (
             <RightPanel
@@ -2683,12 +2706,6 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         const timelineClasses = classNames("mx_RoomView_timeline", {
             mx_RoomView_timeline_rr_enabled: this.state.showReadReceipts,
         });
-
-        let { mainSplitContentType } = this.state;
-        if (this.state.search) {
-            // When in the middle of a search force the main split content type to timeline
-            mainSplitContentType = MainSplitContentType.Timeline;
-        }
 
         const mainClasses = classNames("mx_RoomView", {
             mx_RoomView_inCall: Boolean(activeCall),

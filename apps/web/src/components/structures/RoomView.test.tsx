@@ -661,7 +661,7 @@ describe("RoomView", () => {
             vi.spyOn(room, "getMyMembership").mockReturnValue(KnownMembership.Join);
         });
 
-        it("hides the right panel chat when closing a call", async () => {
+        it("suppresses the duplicate right panel chat during and after a split call", async () => {
             await mountRoomView();
 
             // Open the call
@@ -674,10 +674,10 @@ describe("RoomView", () => {
                     view_call: true,
                 }),
             );
-            // Open the chat in the right panel
+            // Attempting to open the chat timeline in the right panel is suppressed because
+            // the main timeline is already visible in the left pane of the split call view.
             act(() => stores.rightPanelStore.setCard({ phase: RightPanelPhases.Timeline }));
-            // Chat should be visible in the right panel
-            await findByRole(await screen.findByRole("complementary"), "heading", { name: "Chat" });
+            expect(screen.queryByRole("complementary")).toBe(null);
 
             // Close the call
             await act(() =>
@@ -689,7 +689,7 @@ describe("RoomView", () => {
                     view_call: false,
                 }),
             );
-            // Right panel should be gone
+            // Right panel should still be gone
             expect(screen.queryByRole("complementary")).toBe(null);
             // Opening the right panel again should just show the room summary
             act(() => stores.rightPanelStore.show(room.roomId));
@@ -731,10 +731,9 @@ describe("RoomView", () => {
                     view_call: true,
                 }),
             );
-            // Open the chat in the right panel
+            // Attempting to open the chat in the right panel is suppressed during split call view
             act(() => stores.rightPanelStore.setCard({ phase: RightPanelPhases.Timeline }));
-            // Chat should be visible in the right panel
-            await findByRole(await screen.findByRole("complementary"), "heading", { name: "Chat" });
+            expect(screen.queryByRole("complementary")).toBe(null);
 
             // Navigate away to another room
             await act(() =>

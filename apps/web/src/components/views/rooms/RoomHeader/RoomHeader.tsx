@@ -287,9 +287,7 @@ function RoomHeaderButtons({ room, extraButtons }: { room: Room; extraButtons?: 
     const roomContext = useScopedRoomContext("mainSplitContentType");
     const isVideoRoom = calcIsVideoRoom(room);
     const showChatButton =
-        isVideoRoom ||
-        roomContext.mainSplitContentType === MainSplitContentType.MaximisedWidget ||
-        roomContext.mainSplitContentType === MainSplitContentType.Call;
+        isVideoRoom || roomContext.mainSplitContentType === MainSplitContentType.MaximisedWidget;
     return (
         <>
             {extraButtons}
