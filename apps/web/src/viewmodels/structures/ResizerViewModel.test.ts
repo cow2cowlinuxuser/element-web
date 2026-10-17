@@ -187,4 +187,29 @@ describe("LeftPanelResizerViewModel", () => {
         vm.onLeftPanelResized(50);
         expect(mockHandle.resize).not.toHaveBeenCalled();
     });
+
+    it("should toggle between collapsed and expanded states via toggleCollapse()", async () => {
+        const vm = new ResizerViewModel(CallStore.instance);
+        await SettingsStore.setValue("RoomList.panelSize", null, SettingLevel.DEVICE, 34);
+        let collapsed = false;
+        const mockHandle = {
+            collapse: vi.fn(() => {
+                collapsed = true;
+            }),
+            resize: vi.fn(() => {
+                collapsed = false;
+            }),
+            isCollapsed: vi.fn(() => collapsed),
+            getSize: vi.fn().mockReturnValue(0),
+        } as unknown as PanelImperativeHandle;
+        vm.setPanelHandle(mockHandle);
+
+        vm.toggleCollapse();
+        expect(mockHandle.collapse).toHaveBeenCalledTimes(1);
+        expect(vm.getSnapshot().isCollapsed).toBe(true);
+
+        vm.toggleCollapse();
+        expect(mockHandle.resize).toHaveBeenCalledWith("34%");
+        expect(vm.getSnapshot().isCollapsed).toBe(false);
+    });
 });

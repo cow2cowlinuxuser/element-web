@@ -18,6 +18,7 @@ import React, {
     type JSX,
     useEffect,
 } from "react";
+import { Resizable } from "re-resizable";
 import classNames from "classnames";
 import {
     type IRecommendedVersion,
@@ -2218,6 +2219,34 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         void this.messagePanel?.updateReadMarker();
     };
 
+    private loadCallVoicePaneSize(): { width: number; height: string } {
+        const stored = parseInt(window.localStorage.getItem("mx_call_voice_pane_size") ?? "", 10);
+        return {
+            width: Number.isNaN(stored) ? 340 : Math.max(220, stored),
+            height: "100%",
+        };
+    }
+
+    private onCallVoicePaneResizeStart = (): void => {
+        this.context.resizeNotifier.startResizing();
+    };
+
+    private onCallVoicePaneResize = (): void => {
+        this.context.resizeNotifier.notifyRightHandleResized();
+    };
+
+    private onCallVoicePaneResizeStop = (
+        _event: MouseEvent | TouchEvent,
+        _direction: unknown,
+        elementRef: HTMLElement,
+        delta: { width: number; height: number },
+    ): void => {
+        this.context.resizeNotifier.stopResizing();
+        const width =
+            elementRef.offsetWidth > 0 ? elementRef.offsetWidth : this.loadCallVoicePaneSize().width + delta.width;
+        window.localStorage.setItem("mx_call_voice_pane_size", Math.max(220, width).toString());
+    };
+
     public render(): ReactNode {
         if (!this.context.client) return null;
         const { isRoomEncrypted } = this.state;
@@ -2708,17 +2737,70 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                 break;
             case MainSplitContentType.Call: {
                 mainSplitContentClassName = "mx_MainSplit_call";
-                mainSplitBody = (
-                    <>
-                        <CallView
-                            room={this.state.room}
-                            resizing={this.state.resizing}
-                            role="main"
-                            onClose={this.onCallClose}
-                        />
-                        {previewBar}
-                    </>
-                );
+                if (isVideoRoom(this.state.room)) {
+                    mainSplitBody = (
+                        <>
+                            <CallView
+                                room={this.state.room}
+                                resizing={this.state.resizing}
+                                role="main"
+                                onClose={this.onCallClose}
+                            />
+                            {previewBar}
+                        </>
+                    );
+                } else {
+                    mainSplitBody = (
+                        <div className="mx_RoomView_callSplit" data-testid="room-call-split">
+                            <div className="mx_RoomView_callChatPane" data-testid="room-call-chat-pane">
+                                <RoomUploadContextProvider>
+                                    <Measured sensor={this.roomViewBody} onMeasurement={this.onMeasurement} />
+                                    {auxPanel}
+                                    {pinnedMessageBanner}
+                                    <main className={timelineClasses} data-testid="timeline">
+                                        <FileDropTarget parent={this.roomView.current} />
+                                        {topUnreadMessagesBar}
+                                        {jumpToBottom}
+                                        {messagePanel}
+                                        {searchResultsPanel}
+                                    </main>
+                                    {statusBarArea}
+                                    {previewBar}
+                                    {messageComposer}
+                                </RoomUploadContextProvider>
+                            </div>
+                            <div className="mx_RoomView_callVoicePane" data-testid="room-call-voice-pane">
+                                <Resizable
+                                    defaultSize={this.loadCallVoicePaneSize()}
+                                    minWidth={220}
+                                    maxWidth="75vw"
+                                    enable={{
+                                        top: false,
+                                        right: false,
+                                        bottom: false,
+                                        left: true,
+                                        topRight: false,
+                                        bottomRight: false,
+                                        bottomLeft: false,
+                                        topLeft: false,
+                                    }}
+                                    onResizeStart={this.onCallVoicePaneResizeStart}
+                                    onResize={this.onCallVoicePaneResize}
+                                    onResizeStop={this.onCallVoicePaneResizeStop}
+                                    className="mx_RoomView_callVoicePane_resizer"
+                                    handleClasses={{ left: "mx_ResizeHandle--horizontal" }}
+                                >
+                                    <CallView
+                                        room={this.state.room}
+                                        resizing={this.state.resizing}
+                                        role="region"
+                                        onClose={this.onCallClose}
+                                    />
+                                </Resizable>
+                            </div>
+                        </div>
+                    );
+                }
             }
         }
         const mainSplitContentClasses = classNames("mx_RoomView_body", mainSplitContentClassName);

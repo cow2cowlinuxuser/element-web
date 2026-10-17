@@ -47,6 +47,7 @@ import { getIncomingCallToastKey, getNotificationEventSendTs, IncomingCallToast 
 import ToastStore from "./stores/ToastStore";
 import { stripPlainReply } from "./utils/Reply";
 import { BackgroundAudio } from "./audio/BackgroundAudio";
+import { isLocalSoundUrl, loadLocalSound } from "./audio/LocalNotificationSounds";
 import { type MatrixDispatcher } from "./dispatcher/dispatcher.ts";
 
 /*
@@ -280,7 +281,11 @@ export default class Notifier extends TypedEventEmitter<keyof EmittedEvents, Emi
         }
     }
 
-    public getSoundForRoom(roomId: string): NotificationSound | null {
+    /**
+     * Reads a room's custom notification sound setting.
+     * @returns the stored setting, whose `url` is an mxc URL, or null if there is no valid custom sound.
+     */
+    private getSoundSetting(roomId: string): NotificationSound | null {
         // We do no caching here because the SDK caches setting
         // and the browser will cache the sound.
         const content = SettingsStore.getValue("notificationSound", roomId);
@@ -293,9 +298,27 @@ export default class Notifier extends TypedEventEmitter<keyof EmittedEvents, Emi
             return null;
         }
 
-        if (!content.url.startsWith("mxc://")) {
+        if (!content.url.startsWith("mxc://") && !isLocalSoundUrl(content.url)) {
             logger.warn(`${roomId} has custom notification sound event, but url is not a mxc url`);
             return null;
+        }
+
+        return content;
+    }
+
+    /**
+     * Gets a room's custom notification sound.
+     * @returns the sound, with an HTTP `url` for uploaded sounds or a local sound URL for sounds kept on this
+     *     device, or null if the room uses the default sound.
+     */
+    public getSoundForRoom(roomId: string): NotificationSound | null {
+        const content = this.getSoundSetting(roomId);
+        if (!content) {
+            return null;
+        }
+
+        if (isLocalSoundUrl(content.url)) {
+            return { url: content.url, name: content.name, type: content.type, size: content.size };
         }
 
         // Ideally in here we could use MSC1310 to detect the type of file, and reject it.
@@ -339,11 +362,91 @@ export default class Notifier extends TypedEventEmitter<keyof EmittedEvents, Emi
         }
         this.lastAudioNotificationMs.set(soundKey, now);
 
-        if (sound) {
-            await this.backgroundAudio.play(sound.url);
-        } else {
-            await this.backgroundAudio.pickFormatAndPlay("media/message", ["mp3", "ogg"]);
+        const volume = this.getSoundVolume();
+        if (volume <= 0) {
+            return;
         }
+
+        if (sound) {
+            try {
+                await this.playCustomSound(room.roomId, sound, volume);
+                return;
+            } catch (e) {
+                // A sound that cannot be fetched or decoded would otherwise leave the room silent.
+                logger.warn(`Could not play custom notification sound for ${room.roomId}, playing the default`, e);
+            }
+        }
+        await this.backgroundAudio.pickFormatAndPlay("media/message", ["mp3", "ogg"], false, { volume });
+    }
+
+    /**
+     * Plays a room's notification sound straight away, at the configured volume, so it can be checked from
+     * settings. Unlike a real notification this ignores the throttle and local silencing, and does not fall
+     * back to the default sound.
+     * @throws if the room's custom sound cannot be fetched or decoded.
+     */
+    public async previewSoundForRoom(roomId: string): Promise<void> {
+        const volume = this.getSoundVolume();
+        const sound = this.getSoundForRoom(roomId);
+        if (sound) {
+            await this.playCustomSound(roomId, sound, volume);
+        } else {
+            await this.backgroundAudio.pickFormatAndPlay("media/message", ["mp3", "ogg"], false, { volume });
+        }
+    }
+
+    /**
+     * The notification sound volume from 0 to 1. Falls back to full volume if the stored value is not a number,
+     * so a bad value in device storage cannot silence every notification.
+     */
+    private getSoundVolume(): number {
+        const percent = SettingsStore.getValue("notificationSoundVolume");
+        if (typeof percent !== "number" || !Number.isFinite(percent)) {
+            return 1;
+        }
+        return Math.min(Math.max(percent, 0), 100) / 100;
+    }
+
+    /**
+     * Plays a room's custom notification sound.
+     *
+     * When the homeserver supports authenticated media, the sound is fetched from the authenticated
+     * endpoint with the access token attached here, instead of relying on the service worker (web) or
+     * the request rewriting in Electron (desktop) to do it for the legacy URL.
+     */
+    private async playCustomSound(roomId: string, sound: NotificationSound, volume: number): Promise<void> {
+        if (isLocalSoundUrl(sound.url)) {
+            await this.backgroundAudio.playData(
+                sound.url,
+                async () => {
+                    const data = await loadLocalSound(sound.url);
+                    if (!data) {
+                        throw new Error("The notification sound saved on this device is missing");
+                    }
+                    return data;
+                },
+                false,
+                { volume },
+            );
+            return;
+        }
+
+        const cli = this.sdkContext.client;
+        const mxc = this.getSoundSetting(roomId)?.url;
+        const accessToken = cli?.getAccessToken();
+        if (cli && mxc && accessToken && (await cli.isVersionSupported("v1.11"))) {
+            // mediaFromMxc only builds legacy URLs, which is what we are avoiding here.
+            // eslint-disable-next-line no-restricted-properties
+            const url = cli.mxcUrlToHttp(mxc, undefined, undefined, undefined, false, true, true);
+            if (url) {
+                await this.backgroundAudio.play(url, false, {
+                    volume,
+                    requestInit: { headers: { Authorization: `Bearer ${accessToken}` } },
+                });
+                return;
+            }
+        }
+        await this.backgroundAudio.play(sound.url, false, { volume });
     }
 
     public start(): void {
@@ -638,7 +741,9 @@ export default class Notifier extends TypedEventEmitter<keyof EmittedEvents, Emi
             }
             if (actions.tweaks.sound && this.isAudioEnabled()) {
                 PlatformPeg.get()?.loudNotification(ev, room);
-                void this.playAudioNotification(ev, room);
+                this.playAudioNotification(ev, room).catch((e) => {
+                    logger.warn("Failed to play notification sound", e);
+                });
             }
         }
     }

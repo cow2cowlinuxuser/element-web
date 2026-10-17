@@ -52,6 +52,7 @@ import { SettingsSubsectionHeading } from "./shared/SettingsSubsectionHeading";
 import { SettingsSubsection } from "./shared/SettingsSubsection";
 import { doesRoomHaveUnreadMessages } from "../../../Unread";
 import SettingsFlag from "../elements/SettingsFlag";
+import { NotificationSoundVolume } from "./notifications/NotificationSoundVolume";
 import { onSubmitPreventDefault } from "../../../utils/form.ts";
 import { keywordRuleId } from "../../../models/notificationsettings/keywordRuleId.ts";
 
@@ -730,6 +731,7 @@ export default class Notifications extends React.PureComponent<EmptyObject, ISta
                             <SettingsFlag name="notificationsEnabled" level={SettingLevel.DEVICE} />
                             <SettingsFlag name="notificationBodyEnabled" level={SettingLevel.DEVICE} />
                             <SettingsFlag name="audioNotificationsEnabled" level={SettingLevel.DEVICE} />
+                            <NotificationSoundVolume />
                         </>
                     )}
 

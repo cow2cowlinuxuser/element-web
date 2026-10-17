@@ -5,13 +5,13 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import React, { memo, type JSX } from "react";
+import React, { memo, type JSX, type ReactNode } from "react";
 import { useDraggable } from "@dnd-kit/react";
 import { Feedback } from "@dnd-kit/dom";
 import { RestrictToVerticalAxis } from "@dnd-kit/abstract/modifiers";
 import { useMergeRefs } from "react-merge-refs";
 
-import { RoomListItemView, type RoomListItemViewProps } from "./RoomListItemView";
+import { RoomListItemView, type Room, type RoomListItemViewProps } from "./RoomListItemView";
 import { getItemAccessibleProps } from "../../../core/VirtualizedList";
 import { useViewModel } from "../../../core/viewmodel";
 import { type RoomDragData } from "../dragAndDrop";
@@ -25,6 +25,8 @@ export interface RoomListItemWrapperProps extends RoomListItemViewProps {
     roomCount: number;
     /** Whether the room list is displayed as a flat list */
     isInFlatList: boolean;
+    /** Optional render function for content shown below the room, such as who is in its call */
+    renderRoomFooter?: (room: Room) => ReactNode;
 }
 
 /**
@@ -36,10 +38,16 @@ export const RoomListItemWrapper = memo(function RoomListItemWrapper({
     roomCount,
     roomIndexInSection,
     isInFlatList,
+    renderRoomFooter,
     ...rest
 }: RoomListItemWrapperProps): JSX.Element {
     if (isInFlatList) {
-        return <RoomListItemView {...rest} {...getItemAccessibleProps("listbox", roomIndex, roomCount)} />;
+        return (
+            <>
+                <RoomListItemView {...rest} {...getItemAccessibleProps("listbox", roomIndex, roomCount)} />
+                <RoomFooter vm={rest.vm} renderRoomFooter={renderRoomFooter} />
+            </>
+        );
     }
 
     const isFirstInSection = roomIndexInSection === 0;
@@ -63,10 +71,23 @@ export const RoomListItemWrapper = memo(function RoomListItemWrapper({
                         }
                     }}
                 />
+                <RoomFooter vm={rest.vm} renderRoomFooter={renderRoomFooter} />
             </div>
         </div>
     );
 });
+
+/**
+ * Renders whatever the client wants to show below a room. Kept outside the room's button, since the
+ * footer may contain buttons of its own.
+ */
+function RoomFooter({
+    vm,
+    renderRoomFooter,
+}: Pick<RoomListItemViewProps, "vm"> & Pick<RoomListItemWrapperProps, "renderRoomFooter">): ReactNode {
+    const item = useViewModel(vm);
+    return renderRoomFooter?.(item.room) ?? null;
+}
 
 /**
  * Wraps RoomListItemView with the drag-and-drop functionality. This is only used for treegrid mode, as flat list items are not draggable.

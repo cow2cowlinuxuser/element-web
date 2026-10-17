@@ -9,7 +9,7 @@ Please see LICENSE files in the repository root for full details.
 import { useState, useCallback, useMemo, useEffect } from "react";
 
 import type { RoomMember } from "matrix-js-sdk/src/matrix";
-import { type Call, ConnectionState, CallEvent } from "../models/Call";
+import { type Call, ConnectionState, CallEvent, type ElementCallParticipant } from "../models/Call";
 import { useTypedEventEmitterState, useEventEmitter } from "./useEventEmitter";
 import { CallStore, CallStoreEvent } from "../stores/CallStore";
 
@@ -54,3 +54,14 @@ export const useParticipatingMembers = (call: Call | null): RoomMember[] => {
     const participants = useParticipants(call);
     return useMemo(() => [...participants.keys()], [participants]);
 };
+
+/**
+ * Who is in the call and what they are doing, as the call itself reports while the user is
+ * connected to it.
+ */
+export const useLiveParticipants = (call: Call | null): ElementCallParticipant[] =>
+    useTypedEventEmitterState(
+        call ?? undefined,
+        CallEvent.LiveParticipants,
+        useCallback((state) => state ?? call?.liveParticipants ?? [], [call]),
+    );

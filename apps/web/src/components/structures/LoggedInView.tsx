@@ -676,13 +676,19 @@ class LoggedInView extends React.Component<IProps, IState> {
             return <AudioFeedArrayForLegacyCall call={call} key={call.callId} />;
         });
 
+        const resizerViewModel = !moduleRenderer ? this.getResizerViewModel() : undefined;
+
         const leftPanel = (
             <div className="mx_LeftPanel_outerWrapper">
                 <LeftPanelLiveShareWarning isMinimized={false} />
                 <div className={leftPanelWrapperClasses}>
                     {!moduleRenderer && (
                         <div className="mx_LeftPanel_wrapper--user">
-                            <LeftPanel isMinimized={false} resizeNotifier={this.context.resizeNotifier} />
+                            <LeftPanel
+                                isMinimized={false}
+                                resizeNotifier={this.context.resizeNotifier}
+                                resizer={resizerViewModel}
+                            />
                         </div>
                     )}
                 </div>
@@ -692,19 +698,18 @@ class LoggedInView extends React.Component<IProps, IState> {
         const roomView = <div className="mx_RoomView_wrapper">{pageElement}</div>;
 
         let content: React.ReactNode;
-        const resizerViewModel = !moduleRenderer ? this.getResizerViewModel() : undefined;
         if (resizerViewModel && !moduleRenderer) {
             // Resizable layout with a draggable separator. The SpacePanel lives inside GroupView
             // (leftPanel omits it).
             content = (
                 <GroupView vm={resizerViewModel}>
-                    <SpacePanel />
+                    <SpacePanel resizer={resizerViewModel} />
                     <LeftResizablePanelView
                         vm={resizerViewModel}
                         className="mx_LeftPanel_panel"
-                        minSize="200px"
-                        maxSize="370px"
-                        defaultSize="370px"
+                        minSize="240px"
+                        maxSize="480px"
+                        defaultSize="340px"
                     >
                         {leftPanel}
                     </LeftResizablePanelView>

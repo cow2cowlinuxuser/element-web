@@ -44,6 +44,9 @@ exports[`RoomView > for a local room > in state CREATING should match the snapsh
           </div>
         </div>
       </button>
+      <div
+        class="mx_MinimisedCallSlot"
+      />
     </header>
     <div
       class="mx_RoomView_body"
@@ -128,6 +131,9 @@ exports[`RoomView > for a local room > in state ERROR > should match the snapsho
           </div>
         </div>
       </button>
+      <div
+        class="mx_MinimisedCallSlot"
+      />
     </header>
     <main
       aria-label="Room content"
@@ -324,6 +330,9 @@ exports[`RoomView > for a local room > in state NEW > should match the snapshot 
           </div>
         </div>
       </button>
+      <div
+        class="mx_MinimisedCallSlot"
+      />
     </header>
     <main
       aria-label="Room content"
@@ -729,6 +738,9 @@ exports[`RoomView > for a local room > in state NEW > that is encrypted > should
           </div>
         </div>
       </button>
+      <div
+        class="mx_MinimisedCallSlot"
+      />
     </header>
     <main
       aria-label="Room content"
@@ -1181,6 +1193,9 @@ exports[`RoomView > should hide the composer when hideComposer=true 1`] = `
               </div>
             </div>
           </button>
+          <div
+            class="mx_MinimisedCallSlot"
+          />
           <button
             aria-disabled="false"
             aria-label="Video call"
@@ -1736,6 +1751,9 @@ exports[`RoomView > should hide the pinned message banner when hidePinnedMessage
               </div>
             </div>
           </button>
+          <div
+            class="mx_MinimisedCallSlot"
+          />
           <button
             aria-disabled="false"
             aria-label="Video call"
@@ -2221,6 +2239,9 @@ exports[`RoomView > should hide the right panel when hideRightPanel=true 1`] = `
               </div>
             </div>
           </button>
+          <div
+            class="mx_MinimisedCallSlot"
+          />
           <button
             aria-disabled="false"
             aria-label="Video call"
@@ -2706,6 +2727,9 @@ exports[`RoomView > should not display the timeline when the room encryption is 
               </div>
             </div>
           </button>
+          <div
+            class="mx_MinimisedCallSlot"
+          />
           <button
             aria-disabled="false"
             aria-label="Video call"
@@ -2945,6 +2969,9 @@ exports[`RoomView > should not display the timeline when the room encryption is 
               </div>
             </div>
           </button>
+          <div
+            class="mx_MinimisedCallSlot"
+          />
           <button
             aria-disabled="false"
             aria-label="Video call"
@@ -3470,6 +3497,9 @@ exports[`RoomView > video rooms > should render joined video room view 1`] = `
               </div>
             </div>
           </button>
+          <div
+            class="mx_MinimisedCallSlot"
+          />
           <button
             aria-label="Chat"
             aria-labelledby="react-use-id-1"
@@ -3617,7 +3647,7 @@ exports[`RoomView > video rooms > should render joined video room view 1`] = `
       </div>
       <div
         class="mx_RightPanel_ResizeWrapper"
-        style="position: relative; user-select: auto; width: 420px; height: 100%; max-width: 50%; min-width: 320px; box-sizing: border-box; flex-shrink: 0;"
+        style="position: relative; user-select: auto; width: 420px; height: 100%; max-width: 75%; min-width: 240px; box-sizing: border-box; flex-shrink: 0;"
       >
         <aside
           class="mx_RightPanel"

@@ -1,0 +1,193 @@
+/*
+Copyright 2026 Element Creations Ltd.
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+.mx_RoomCallParticipants {
+    list-style: none;
+    margin: 0;
+    /* Line up with the room name, past the room avatar */
+    padding: 0 var(--cpd-space-3x) var(--cpd-space-1x) calc(var(--cpd-space-3x) + var(--cpd-space-2x) + 32px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.mx_RoomCallParticipants_participant {
+    display: flex;
+    align-items: center;
+    gap: var(--cpd-space-2x);
+    width: 100%;
+    padding: 2px var(--cpd-space-2x);
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--cpd-color-text-secondary);
+    font: var(--cpd-font-body-sm-regular);
+    text-align: start;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        background: var(--cpd-color-bg-action-tertiary-hovered);
+        color: var(--cpd-color-text-primary);
+    }
+}
+
+.mx_RoomCallParticipants_avatar {
+    display: flex;
+    flex-shrink: 0;
+    border-radius: 50%;
+    /* The speaking ring */
+    outline: 2px solid transparent;
+    outline-offset: 1px;
+    transition: outline-color 0.15s ease;
+}
+
+.mx_RoomCallParticipants_speaking .mx_RoomCallParticipants_avatar {
+    outline-color: var(--cpd-color-icon-success-primary);
+}
+
+.mx_RoomCallParticipants_speaking .mx_RoomCallParticipants_name {
+    color: var(--cpd-color-text-primary);
+}
+
+.mx_RoomCallParticipants_avatarFallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--cpd-color-bg-subtle-primary);
+    font: var(--cpd-font-body-xs-semibold);
+}
+
+.mx_RoomCallParticipants_name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mx_RoomCallParticipants_icon {
+    flex-shrink: 0;
+    color: var(--cpd-color-icon-tertiary);
+}
+
+.mx_RoomCallParticipants_sharing {
+    color: var(--cpd-color-icon-accent-primary);
+}
+
+.mx_RoomCallParticipants.mx_RoomCallParticipants_compact {
+    padding: 0 0 var(--cpd-space-1x) var(--cpd-space-1x);
+
+    .mx_RoomCallParticipants_participant {
+        position: relative;
+        gap: var(--cpd-space-1x);
+        padding: 2px var(--cpd-space-1x);
+    }
+
+    /* Kept for screen readers; the button's title names them for everyone else */
+    .mx_RoomCallParticipants_name {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+}
+
+.mx_RoomCallParticipants_contextMenu {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 240px;
+    padding: var(--cpd-space-2x);
+    color: var(--cpd-color-text-primary);
+    font: var(--cpd-font-body-sm-regular);
+}
+
+.mx_RoomCallParticipants_menuHeader {
+    padding: var(--cpd-space-1x) var(--cpd-space-2x);
+    font: var(--cpd-font-body-sm-semibold);
+    color: var(--cpd-color-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mx_RoomCallParticipants_menuDivider {
+    height: 1px;
+    margin: var(--cpd-space-1x) 0;
+    background: var(--cpd-color-border-interactive-secondary);
+}
+
+.mx_RoomCallParticipants_menuItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 6px var(--cpd-space-2x);
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--cpd-color-text-primary);
+    font: var(--cpd-font-body-sm-regular);
+    text-align: start;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        background: var(--cpd-color-bg-action-tertiary-hovered);
+    }
+}
+
+.mx_RoomCallParticipants_checkbox {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid var(--cpd-color-border-interactive-primary);
+    font: var(--cpd-font-body-xs-semibold);
+    color: var(--cpd-color-text-on-solid-primary);
+}
+
+.mx_RoomCallParticipants_checkbox_checked {
+    background: var(--cpd-color-bg-accent-rest);
+    border-color: var(--cpd-color-bg-accent-rest);
+}
+
+.mx_RoomCallParticipants_sliderGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px var(--cpd-space-2x);
+}
+
+.mx_RoomCallParticipants_sliderHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font: var(--cpd-font-body-xs-medium);
+    color: var(--cpd-color-text-secondary);
+}
+
+.mx_RoomCallParticipants_slider {
+    width: 100%;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--cpd-color-icon-accent-primary);
+}
+
+.mx_RoomCallParticipants_resetButton {
+    margin-top: var(--cpd-space-1x);
+    color: var(--cpd-color-text-secondary);
+    justify-content: center;
+}

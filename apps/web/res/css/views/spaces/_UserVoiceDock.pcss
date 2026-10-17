@@ -1,0 +1,272 @@
+/*
+Copyright 2026 Element Creations Ltd.
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+.mx_UserVoiceDock {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    margin: 0 var(--cpd-space-2x) var(--cpd-space-2x);
+    border-radius: 10px;
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    overflow: hidden;
+}
+
+.mx_UserVoiceDock_connected {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cpd-space-2x);
+    padding: var(--cpd-space-2x) var(--cpd-space-3x);
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+    background-color: var(--cpd-color-bg-subtle-primary);
+}
+
+.mx_UserVoiceDock_connectedHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cpd-space-2x);
+}
+
+.mx_UserVoiceDock_connectedInfo {
+    display: flex;
+    align-items: center;
+    gap: var(--cpd-space-2x);
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    text-align: start;
+    cursor: pointer;
+}
+
+.mx_UserVoiceDock_signalIcon {
+    flex-shrink: 0;
+    color: var(--cpd-color-icon-success-primary);
+}
+
+.mx_UserVoiceDock_connectedText {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.mx_UserVoiceDock_statusTitle {
+    font: var(--cpd-font-body-sm-semibold);
+    color: var(--cpd-color-text-success-primary);
+    line-height: 1.2;
+}
+
+.mx_UserVoiceDock_roomSubtitle {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mx_UserVoiceDock_actionRow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--cpd-space-1-5x);
+}
+
+.mx_UserVoiceDock_actionButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background-color: var(--cpd-color-bg-action-secondary-rest);
+    color: var(--cpd-color-icon-primary);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover,
+    &:focus-visible {
+        background-color: var(--cpd-color-bg-action-secondary-hovered);
+    }
+}
+
+.mx_UserVoiceDock_actionButton_active {
+    background-color: var(--cpd-color-bg-accent-rest);
+    color: var(--cpd-color-icon-on-solid-primary);
+}
+
+.mx_UserVoiceDock_profileBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cpd-space-1-5x);
+    padding: var(--cpd-space-1-5x) var(--cpd-space-2x);
+}
+
+.mx_UserVoiceDock_profileButton {
+    display: flex;
+    align-items: center;
+    gap: var(--cpd-space-2x);
+    flex: 1;
+    min-width: 0;
+    padding: 4px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--cpd-color-text-primary);
+    text-align: start;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        background-color: var(--cpd-color-bg-action-tertiary-hovered);
+    }
+}
+
+.mx_UserVoiceDock_avatarWrapper {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    border-radius: 50%;
+    outline: 2px solid transparent;
+    outline-offset: 1px;
+    transition: outline-color 0.15s ease;
+}
+
+.mx_UserVoiceDock_speaking {
+    outline-color: var(--cpd-color-icon-success-primary);
+}
+
+.mx_UserVoiceDock_statusDot {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--cpd-color-icon-success-primary);
+    border: 2px solid var(--cpd-color-bg-subtle-secondary);
+}
+
+.mx_UserVoiceDock_userMeta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.mx_UserVoiceDock_displayName {
+    font: var(--cpd-font-body-sm-semibold);
+    color: var(--cpd-color-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+.mx_UserVoiceDock_subtext {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mx_UserVoiceDock_subtext_inVoice {
+    color: var(--cpd-color-text-success-primary);
+}
+
+.mx_UserVoiceDock_controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.mx_UserVoiceDock_iconButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--cpd-color-icon-secondary);
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        background-color: var(--cpd-color-bg-action-tertiary-hovered);
+        color: var(--cpd-color-icon-primary);
+    }
+}
+
+.mx_UserVoiceDock_iconButton_danger,
+.mx_UserVoiceDock_disconnectButton {
+    color: var(--cpd-color-icon-critical-primary);
+
+    &:hover,
+    &:focus-visible {
+        background-color: var(--cpd-color-bg-critical-subtle);
+        color: var(--cpd-color-icon-critical-primary);
+    }
+}
+
+.mx_UserVoiceDock.mx_UserVoiceDock_minimized {
+    margin: var(--cpd-space-1x) var(--cpd-space-1-5x) var(--cpd-space-2x);
+    border-radius: 12px;
+    align-items: center;
+
+    .mx_UserVoiceDock_connected {
+        width: 100%;
+        padding: var(--cpd-space-1-5x) var(--cpd-space-1x);
+        gap: var(--cpd-space-1x);
+        align-items: center;
+        box-sizing: border-box;
+    }
+
+    .mx_UserVoiceDock_connectedHeader {
+        flex-direction: column;
+        gap: var(--cpd-space-1x);
+    }
+
+    .mx_UserVoiceDock_connectedInfo {
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+
+        &:hover,
+        &:focus-visible {
+            background-color: var(--cpd-color-bg-action-tertiary-hovered);
+        }
+    }
+
+    .mx_UserVoiceDock_connectedText,
+    .mx_UserVoiceDock_actionRow,
+    .mx_UserVoiceDock_userMeta {
+        display: none;
+    }
+
+    .mx_UserVoiceDock_profileBar {
+        flex-direction: column-reverse;
+        gap: var(--cpd-space-1x);
+        padding: var(--cpd-space-1-5x) var(--cpd-space-1x);
+    }
+
+    .mx_UserVoiceDock_profileButton {
+        flex: 0 0 auto;
+        justify-content: center;
+        padding: 2px;
+    }
+
+    .mx_UserVoiceDock_controls {
+        flex-direction: column;
+        gap: 2px;
+    }
+}

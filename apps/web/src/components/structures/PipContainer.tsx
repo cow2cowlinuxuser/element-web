@@ -7,6 +7,8 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { type RefObject, type ReactNode, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { type Room } from "matrix-js-sdk/src/matrix";
 import { CallEvent, CallState, type MatrixCall } from "matrix-js-sdk/src/webrtc/call";
 import { logger } from "matrix-js-sdk/src/logger";
 import { useCreateAutoDisposedViewModel, WidgetPipView } from "@element-hq/web-shared-components";
@@ -23,6 +25,10 @@ import { UPDATE_EVENT } from "../../stores/AsyncStore";
 import RoomAvatar from "../views/avatars/RoomAvatar";
 import { WidgetPipViewModel, type Props as WidgetPipViewModelProps } from "../../viewmodels/room/WidgetPipViewModel";
 import { SDKContext } from "../../contexts/SDKContext.ts";
+import { CallStore } from "../../stores/CallStore";
+import { type Call } from "../../models/Call";
+import { MinimisedCallPill } from "../views/voip/MinimisedCallPill";
+import { MinimisedCallPipStore, useMinimisedCallPip } from "../../stores/MinimisedCallPipStore";
 
 const SHOW_CALL_IN_STATES = [
     CallState.Connected,
@@ -35,6 +41,10 @@ const SHOW_CALL_IN_STATES = [
 
 interface IProps {
     movePersistedElement: RefObject<(() => void) | null>;
+    /** Whether the user has collapsed a call's floating window into a pill. */
+    minimised: boolean;
+    /** Where to dock that pill, if there's a room header to dock it into. */
+    pillSlot: HTMLElement | null;
 }
 
 interface IState {
@@ -231,7 +241,25 @@ class PipContainerInner extends React.Component<IProps, IState> {
         // containers of the room view.
         const showWidgetInPip = fromAnotherRoom || notDocked;
 
+        // A new call should start out with its window showing
+        if (!persistentWidgetId) MinimisedCallPipStore.instance.setMinimised(false);
+
         this.setState({ showWidgetInPip, persistentWidgetId, persistentRoomId });
+    }
+
+    private onRestore = (): void => MinimisedCallPipStore.instance.setMinimised(false);
+
+    /** The call whose widget is shown in the PiP, if it is a call's widget. */
+    private getPipCall(): Call | null {
+        if (!this.state.persistentRoomId) return null;
+        const call = CallStore.instance.getCall(this.state.persistentRoomId);
+        return call?.widget.id === this.state.persistentWidgetId ? call : null;
+    }
+
+    private renderPill(call: Call, room: Room): ReactNode {
+        const pill = <MinimisedCallPill call={call} room={room} onRestore={this.onRestore} />;
+        if (this.props.pillSlot) return createPortal(pill, this.props.pillSlot);
+        return <div className="mx_MinimisedCallPill_floating">{pill}</div>;
     }
 
     public render(): ReactNode {
@@ -254,7 +282,14 @@ class PipContainerInner extends React.Component<IProps, IState> {
             ));
         }
 
-        if (this.state.showWidgetInPip && this.state.persistentWidgetId) {
+        let pill: ReactNode = null;
+        const pipRoom = this.context.client?.getRoom(this.state.persistentRoomId ?? undefined);
+        const pipCall = this.state.showWidgetInPip && pipRoom ? this.getPipCall() : null;
+        if (pipCall && pipRoom && this.props.minimised) {
+            // Unmounting the widget's tile hides the call's iframe without ending the call, since the
+            // widget is kept alive for as long as the call wants to stay on screen
+            pill = this.renderPill(pipCall, pipRoom);
+        } else if (this.state.showWidgetInPip && this.state.persistentWidgetId) {
             pipContent.push(({ onStartMoving }) => (
                 <WidgetPipWrappedView
                     key="widget-pip"
@@ -267,22 +302,24 @@ class PipContainerInner extends React.Component<IProps, IState> {
             ));
         }
 
-        if (pipContent.length) {
-            return (
-                <PictureInPictureDragger onDoubleClick={this.onDoubleClick} onMove={this.onMove}>
-                    {pipContent}
-                </PictureInPictureDragger>
-            );
-        }
-
-        return null;
+        return (
+            <>
+                {pipContent.length > 0 && (
+                    <PictureInPictureDragger onDoubleClick={this.onDoubleClick} onMove={this.onMove}>
+                        {pipContent}
+                    </PictureInPictureDragger>
+                )}
+                {pill}
+            </>
+        );
     }
 }
 
 export const PipContainer: React.FC = () => {
     const movePersistedElement = useRef<() => void>(null);
+    const { minimised, slot } = useMinimisedCallPip();
 
-    return <PipContainerInner movePersistedElement={movePersistedElement} />;
+    return <PipContainerInner movePersistedElement={movePersistedElement} minimised={minimised} pillSlot={slot} />;
 };
 
 type Props = { viewingRoom: boolean } & WidgetPipViewModelProps;

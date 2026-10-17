@@ -32,6 +32,7 @@ import {
     JitsiCall,
     ElementCall,
     ElementCallIntent,
+    parseElementCallParticipants,
 } from "./Call";
 import { WidgetMessagingStore } from "../stores/widgets/WidgetMessagingStore";
 import ActiveWidgetStore, { ActiveWidgetStoreEvent } from "../stores/ActiveWidgetStore";
@@ -105,6 +106,37 @@ const cleanUpCallAndWidget = (call: Call, widget: Widget) => {
     vi.clearAllMocks();
     WidgetMessagingStore.instance.stopMessaging(widget, call.roomId);
 };
+
+describe("parseElementCallParticipants", () => {
+    it("reads participants, defaulting what's missing", () => {
+        expect(
+            parseElementCallParticipants({
+                participants: [{ id: "a:0", user_id: "@a:example.org", speaking: true }],
+            }),
+        ).toEqual([
+            {
+                id: "a:0",
+                userId: "@a:example.org",
+                displayName: "@a:example.org",
+                local: false,
+                speaking: true,
+                audioEnabled: false,
+                videoEnabled: false,
+                screenSharing: false,
+            },
+        ]);
+    });
+
+    it("skips anything malformed", () => {
+        expect(parseElementCallParticipants(undefined)).toEqual([]);
+        expect(parseElementCallParticipants({ participants: "nope" })).toEqual([]);
+        expect(
+            parseElementCallParticipants({
+                participants: [null, 3, { id: 1, user_id: "@a:example.org" }, { id: "b:0" }],
+            }),
+        ).toEqual([]);
+    });
+});
 
 describe("JitsiCall", () => {
     mockPlatformPeg({ supportsJitsiScreensharing: () => true });
@@ -977,6 +1009,90 @@ describe("ElementCall", () => {
             widgetApi.emit(`action:${ElementWidgetActions.DeviceMute}`, mockEv);
             expect(widgetApi.transport.reply).toHaveBeenCalledWith({ video_enabled: false }, {});
             expect(preventDefault).toHaveBeenCalled();
+        });
+
+        it("tracks who Element Call says is in the call, and forgets them on hangup", async () => {
+            await connect(call, widgetApi);
+            const onLiveParticipants = vi.fn();
+            call.on(CallEvent.LiveParticipants, onLiveParticipants);
+            const preventDefault = vi.fn();
+            const detail = {
+                data: {
+                    participants: [
+                        {
+                            id: "@alice:example.org:DEVICE:0",
+                            user_id: "@alice:example.org",
+                            display_name: "Alice",
+                            local: false,
+                            speaking: true,
+                            audio_enabled: true,
+                            video_enabled: false,
+                            screen_sharing: true,
+                        },
+                    ],
+                },
+            };
+            widgetApi.emit(`action:${ElementWidgetActions.ElementCallParticipants}`, { preventDefault, detail });
+
+            expect(preventDefault).toHaveBeenCalled();
+            expect(widgetApi.transport.reply).toHaveBeenCalledWith(detail, {});
+            const expected = [
+                {
+                    id: "@alice:example.org:DEVICE:0",
+                    userId: "@alice:example.org",
+                    displayName: "Alice",
+                    local: false,
+                    speaking: true,
+                    audioEnabled: true,
+                    videoEnabled: false,
+                    screenSharing: true,
+                },
+            ];
+            expect(call.liveParticipants).toEqual(expected);
+            expect(onLiveParticipants).toHaveBeenLastCalledWith(expected);
+
+            await disconnect(call, widgetApi);
+            expect(call.liveParticipants).toEqual([]);
+            call.off(CallEvent.LiveParticipants, onLiveParticipants);
+        });
+
+        it("asks Element Call to focus on a participant", async () => {
+            await connect(call, widgetApi);
+            await call.focusParticipant("@alice:example.org");
+            expect(widgetApi.transport.send).toHaveBeenCalledWith(ElementWidgetActions.FocusParticipant, {
+                user_id: "@alice:example.org",
+            });
+        });
+
+        it("controls device mute, screen share, participant audio, and tile overlay via widget actions", async () => {
+            await connect(call, widgetApi);
+
+            await call.setDeviceMute({ audio_enabled: false, deafened: true });
+            expect(call.audioMuted).toBe(true);
+            expect(call.deafened).toBe(true);
+            expect(widgetApi.transport.send).toHaveBeenCalledWith(ElementWidgetActions.DeviceMute, {
+                audio_enabled: false,
+                deafened: true,
+            });
+
+            await call.toggleScreenSharing();
+            expect(widgetApi.transport.send).toHaveBeenCalledWith(ElementWidgetActions.ScreenShare, {});
+
+            await call.setParticipantAudio({ user_id: "@alice:example.org", muted: true, volume: 0.5 });
+            expect(widgetApi.transport.send).toHaveBeenCalledWith(ElementWidgetActions.ParticipantAudio, {
+                user_id: "@alice:example.org",
+                muted: true,
+                volume: 0.5,
+            });
+
+            const preventDefault = vi.fn();
+            const detail = { data: { open: true } };
+            widgetApi.emit(`action:${ElementWidgetActions.TileOverlay}`, { preventDefault, detail });
+            expect(call.tileOverlayOpen).toBe(true);
+
+            await call.closeTileOverlay();
+            expect(call.tileOverlayOpen).toBe(false);
+            expect(widgetApi.transport.send).toHaveBeenCalledWith(ElementWidgetActions.TileOverlay, { open: false });
         });
 
         it("emits events when connection state changes", async () => {

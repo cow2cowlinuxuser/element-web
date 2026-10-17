@@ -131,6 +131,16 @@ export class ResizerViewModel
         if (!this.panelHandle?.isCollapsed()) this.panelHandle?.collapse();
     };
 
+    public toggleCollapse = (): void => {
+        if (this.panelHandle?.isCollapsed() ?? this.getSnapshot().isCollapsed) {
+            this.onSeparatorClick();
+            this.snapshot.merge({ isCollapsed: false });
+        } else {
+            this.panelHandle?.collapse();
+            this.snapshot.merge({ isCollapsed: true });
+        }
+    };
+
     public onPointerUp = (): void => {
         this.mouseClickHandler.onPointerUp();
     };

@@ -7,7 +7,7 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { type ChangeEvent, useMemo } from "react";
-import { VideoCallSolidIcon, HomeSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { VideoCallSolidIcon, ChatSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { _t } from "../../../../../languageHandler";
 import SettingsStore from "../../../../../settings/SettingsStore";
@@ -39,23 +39,13 @@ export const onMetaSpaceChangeFactory =
     };
 
 const SidebarUserSettingsTab: React.FC = () => {
-    const {
-        [MetaSpace.Home]: homeEnabled,
-        [MetaSpace.Orphans]: orphansEnabled,
-        [MetaSpace.VideoRooms]: videoRoomsEnabled,
-    } = useSettingValue("Spaces.enabledMetaSpaces");
-    const allRoomsInHome = useSettingValue("Spaces.allRoomsInHome");
+    const { [MetaSpace.VideoRooms]: videoRoomsEnabled } = useSettingValue("Spaces.enabledMetaSpaces");
     const guestSpaUrl = useMemo(() => {
         return SdkConfig.get("element_call").guest_spa_url;
     }, []);
     const conferenceSubsectionText =
         _t("settings|sidebar|metaspaces_video_rooms_description") +
         (guestSpaUrl ? " " + _t("settings|sidebar|metaspaces_video_rooms_description_invite_extension") : "");
-
-    const onAllRoomsInHomeToggle = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-        await SettingsStore.setValue("Spaces.allRoomsInHome", null, SettingLevel.ACCOUNT, event.target.checked);
-        PosthogTrackers.trackInteraction("WebSettingsSidebarTabSpacesCheckbox", event, 1);
-    };
 
     return (
         <SettingsTab>
@@ -65,31 +55,19 @@ const SidebarUserSettingsTab: React.FC = () => {
                     description={_t("settings|sidebar|spaces_explainer")}
                 >
                     <StyledCheckbox
-                        checked={!!homeEnabled}
-                        onChange={onMetaSpaceChangeFactory(MetaSpace.Home, "WebSettingsSidebarTabSpacesCheckbox")}
+                        checked
                         className="mx_SidebarUserSettingsTab_checkbox"
-                        disabled={homeEnabled}
-                        description={_t("settings|sidebar|metaspaces_home_description")}
+                        disabled
+                        description={_t("settings|sidebar|metaspaces_direct_messages_description")}
                     >
-                        <HomeSolidIcon className="mx_SidebarUserSettingsTab_icon" />
-                        {_t("common|home")}
+                        <ChatSolidIcon className="mx_SidebarUserSettingsTab_icon" />
+                        {_t("common|direct_messages")}
                     </StyledCheckbox>
 
                     <StyledCheckbox
-                        checked={allRoomsInHome}
-                        disabled={!homeEnabled}
-                        onChange={onAllRoomsInHomeToggle}
-                        className="mx_SidebarUserSettingsTab_checkbox mx_SidebarUserSettingsTab_homeAllRoomsCheckbox"
-                        data-testid="mx_SidebarUserSettingsTab_homeAllRoomsCheckbox"
-                        description={_t("settings|sidebar|metaspaces_home_all_rooms_description")}
-                    >
-                        {_t("settings|sidebar|metaspaces_home_all_rooms")}
-                    </StyledCheckbox>
-
-                    <StyledCheckbox
-                        checked={!!orphansEnabled}
-                        onChange={onMetaSpaceChangeFactory(MetaSpace.Orphans, "WebSettingsSidebarTabSpacesCheckbox")}
+                        checked
                         className="mx_SidebarUserSettingsTab_checkbox"
+                        disabled
                         description={_t("settings|sidebar|metaspaces_orphans_description")}
                     >
                         {_t("settings|sidebar|metaspaces_orphans")}

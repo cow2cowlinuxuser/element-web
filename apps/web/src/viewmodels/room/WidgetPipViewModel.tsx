@@ -22,6 +22,7 @@ import defaultDispatcher from "../../dispatcher/dispatcher";
 import { type ViewRoomPayload } from "../../dispatcher/payloads/ViewRoomPayload";
 import { WidgetLayoutStore } from "../../stores/widgets/WidgetLayoutStore";
 import PersistentApp from "../../components/views/elements/PersistentApp";
+import { MinimisedCallPipStore } from "../../stores/MinimisedCallPipStore";
 
 export interface Props {
     /**
@@ -60,9 +61,15 @@ export class WidgetPipViewModel
     private viewingRoom?: boolean;
 
     public constructor(props: Props) {
-        super(props, { widgetId: props.widgetId, roomName: props.room.name, roomId: props.room.roomId });
+        const call = CallStore.instance.getCall(props.room.roomId);
+        super(props, {
+            widgetId: props.widgetId,
+            roomName: props.room.name,
+            roomId: props.room.roomId,
+            minimisable: call?.widget.id === props.widgetId,
+        });
         this.widget = WidgetStore.instance.getApps(props.room.roomId).find((app) => app.id === this.props.widgetId)!;
-        this.call = CallStore.instance.getCall(props.room.roomId) ?? null;
+        this.call = call ?? null;
         this.onStartMoving = props.onStartMoving;
 
         this.disposables.trackListener(props.room, RoomEvent.Name, this.onRoomName);
@@ -102,6 +109,15 @@ export class WidgetPipViewModel
     }
 
     /**
+     * Collapses a call's PiP into a pill docked in the room header, keeping the call running.
+     */
+    public onMinimiseClick(ev: React.MouseEvent): void {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (this.call !== null) MinimisedCallPipStore.instance.setMinimised(true);
+    }
+
+    /**
      * The component to render as the persistent app by the WidgetPipView.
      * @param props A copy of the `PersistentApp` component's props.
      * @returns
@@ -126,6 +142,7 @@ export class WidgetPipViewModel
         const [call, forRoomId] = args as [Call | null, string];
         if (forRoomId === this.props.room.roomId) {
             this.call = call?.widget.id === this.props.widgetId ? call : null;
+            this.snapshot.merge({ minimisable: this.call !== null });
         }
     };
 }

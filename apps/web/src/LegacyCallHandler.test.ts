@@ -444,6 +444,12 @@ describe("LegacyCallHandler without third party protocols", () => {
         expect(fetchMock).toHaveFetchedTimes(1, "end:/media/ring.mp3");
     });
 
+    it("should not reject when a sound cannot be loaded", async () => {
+        fetchMock.get("end:/media/ringback.mp3", 404);
+        await expect(callHandler.play(AudioID.Ringback)).resolves.toBeUndefined();
+        expect(callHandler.isPlaying(AudioID.Ringback)).toBe(false);
+    });
+
     it("should allow silencing an incoming call ring", async () => {
         await callHandler.play(AudioID.Ring);
         await callHandler.silenceCall("call123");

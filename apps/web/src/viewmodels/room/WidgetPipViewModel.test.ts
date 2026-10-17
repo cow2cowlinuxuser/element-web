@@ -19,6 +19,7 @@ import { Action } from "../../dispatcher/actions";
 import { WidgetLayoutStore } from "../../stores/widgets/WidgetLayoutStore";
 import { CallStore, CallStoreEvent } from "../../stores/CallStore";
 import { type Call } from "../../models/Call";
+import { MinimisedCallPipStore } from "../../stores/MinimisedCallPipStore";
 
 const userId = "@example:example.org";
 const widgetId = "test-widget-id";
@@ -109,5 +110,19 @@ describe("WidgetPipViewModel", () => {
             metricsTrigger: "WebFloatingCallWindow",
         });
         expect(moveSpy).not.toHaveBeenCalled();
+    });
+
+    it("only lets calls be minimised", () => {
+        expect(vm.getSnapshot().minimisable).toBe(false);
+        vm.onMinimiseClick(createBackClickEvent());
+        expect(MinimisedCallPipStore.instance.getState().minimised).toBe(false);
+
+        const call = { widget: { id: widgetId } } as unknown as Call;
+        CallStore.instance.emit(CallStoreEvent.Call, call, room.roomId);
+        expect(vm.getSnapshot().minimisable).toBe(true);
+
+        vm.onMinimiseClick(createBackClickEvent());
+        expect(MinimisedCallPipStore.instance.getState().minimised).toBe(true);
+        MinimisedCallPipStore.instance.setMinimised(false);
     });
 });

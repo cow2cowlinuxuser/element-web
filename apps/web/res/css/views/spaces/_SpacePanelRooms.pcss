@@ -1,0 +1,77 @@
+/*
+Copyright 2026 Element Creations Ltd.
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+/* Share the space bar with the rooms rather than pushing them out of sight */
+.mx_SpacePanel:has(> .mx_SpacePanelRooms) > .mx_AutoHideScrollbar {
+    flex: 0 1 auto;
+    max-height: 50%;
+    padding-bottom: var(--cpd-space-2x);
+}
+
+.mx_SpacePanel .mx_SpacePanelRooms {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    margin: 0 var(--cpd-space-2x);
+    padding: var(--cpd-space-2x) calc(var(--gutterSize) - var(--cpd-space-1x) - var(--cpd-space-2x)) var(--cpd-space-4x);
+    border-top: 1px solid var(--cpd-color-separator-primary);
+    display: flex;
+    flex-direction: column;
+    gap: var(--cpd-space-1x);
+}
+
+.mx_SpacePanelRooms_room {
+    display: flex;
+    align-items: center;
+    gap: var(--cpd-space-2x);
+    width: 100%;
+    padding: var(--cpd-space-1x);
+    border: none;
+    border-radius: 8px;
+    background: none;
+    color: var(--cpd-color-text-secondary);
+    font: var(--cpd-font-body-md-medium);
+    text-align: start;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        background: var(--cpd-color-bg-action-tertiary-hovered);
+        color: var(--cpd-color-text-primary);
+    }
+
+    &.mx_SpacePanelRooms_selected {
+        background: var(--cpd-color-bg-action-tertiary-selected);
+        color: var(--cpd-color-text-primary);
+    }
+}
+
+.mx_SpacePanelRooms_avatar {
+    position: relative;
+    display: flex;
+    flex-shrink: 0;
+}
+
+.mx_SpacePanelRooms_badge {
+    position: absolute;
+    top: -4px;
+    right: -6px;
+}
+
+.mx_SpacePanelRooms_name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* With the space bar expanded, line the participants up under the room name */
+.mx_SpacePanelRooms .mx_RoomCallParticipants:not(.mx_RoomCallParticipants_compact) {
+    padding-inline: calc(32px + var(--cpd-space-1x)) 0;
+}

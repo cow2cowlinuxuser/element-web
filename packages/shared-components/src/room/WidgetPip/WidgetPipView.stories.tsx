@@ -25,12 +25,14 @@ const WidgetPipViewWrapperImpl = ({
     onBackClick,
     persistentAppComponent,
     onStartMoving,
+    onMinimiseClick,
     ...rest
 }: WidgetPipViewProps): JSX.Element => {
     const vm = useMockedViewModel(rest, {
         onBackClick,
         persistentAppComponent,
         onStartMoving,
+        onMinimiseClick,
     });
     return <WidgetPipView vm={vm} RoomAvatar={RoomAvatarMock} />;
 };
@@ -49,6 +51,7 @@ export default {
         onBackClick: fn(),
         persistentAppComponent: PersistentAppMock,
         onStartMoving: fn(),
+        onMinimiseClick: fn(),
     },
     parameters: {
         design: {
@@ -71,6 +74,12 @@ Default.args = {};
  */
 export const WithLongName = Template.bind({});
 WithLongName.args = { roomName: "Looooooooooooooooooooooooooooooong room name" };
+
+/**
+ * Rendered for a call, which can be minimised into a pill.
+ */
+export const Minimisable = Template.bind({});
+Minimisable.args = { minimisable: true };
 
 /**
  * Rendered when using a transparent background widget like Element Call.

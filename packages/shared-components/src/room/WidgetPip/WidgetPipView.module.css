@@ -7,7 +7,9 @@ Please see LICENSE files in the repository root for full details.
 
 .container {
     width: 304px; /* hardcoded to match figma -> might become a resizable pip in the future */
-    height: 278px; /* hardcoded to match figma -> might become a resizable pip in the future */
+    /* Taller than figma's 278px to leave room for a call's miniature participant tiles. Must stay
+    within Element Call's own PiP size (340x400) once the header and padding are taken off. */
+    height: 340px;
 
     display: flex;
     flex-direction: column;
@@ -35,6 +37,11 @@ Please see LICENSE files in the repository root for full details.
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.minimise {
+    margin-inline-start: auto;
+    flex-shrink: 0;
 }
 
 .roundedCornerContainer {

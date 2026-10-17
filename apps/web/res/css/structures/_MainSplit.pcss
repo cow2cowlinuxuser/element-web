@@ -14,19 +14,28 @@ Please see LICENSE files in the repository root for full details.
 }
 
 .mx_MainSplit > .mx_RightPanel_ResizeWrapper {
+    .mx_ResizeHandle--horizontal {
+        z-index: 100;
+
+        &::before {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            height: 64px; /* to match width of the ones on roomlist */
+            width: 4px;
+            border-radius: 4px;
+            content: "";
+            background-color: var(--cpd-color-border-interactive-primary);
+            opacity: 0.35;
+            transition:
+                opacity 0.15s ease,
+                background-color 0.15s ease;
+        }
+    }
+
     &:hover .mx_ResizeHandle--horizontal::before {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-150%, -50%);
-
-        height: 64px; /* to match width of the ones on roomlist */
-        width: 4px;
-        border-radius: 4px;
-
-        content: "";
-
         background-color: $primary-content;
-        opacity: 0.8;
+        opacity: 0.85;
     }
 }

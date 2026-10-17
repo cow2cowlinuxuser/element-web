@@ -26,24 +26,13 @@ import * as testUtils from "test-utils";
 import { mkEvent, setupAsyncStoreWithClient, stubClient, TestSDKContext } from "test-utils";
 
 import SpaceStore from "./SpaceStore";
-import {
-    MetaSpace,
-    UPDATE_HOME_BEHAVIOUR,
-    UPDATE_INVITED_SPACES,
-    UPDATE_SELECTED_SPACE,
-    UPDATE_TOP_LEVEL_SPACES,
-} from ".";
+import { MetaSpace, UPDATE_INVITED_SPACES, UPDATE_SELECTED_SPACE, UPDATE_TOP_LEVEL_SPACES } from ".";
 import DMRoomMap from "../../../src/utils/DMRoomMap";
 import defaultDispatcher from "../../../src/dispatcher/dispatcher";
 import SettingsStore from "../../../src/settings/SettingsStore";
 import { SettingLevel } from "../../settings/SettingLevel";
 import { Action } from "../../dispatcher/actions";
 import { MatrixClientPeg } from "../../MatrixClientPeg";
-import RoomListStoreV3 from "../room-list-v3/RoomListStoreV3";
-import { DefaultTagID } from "../room-list-v3/skip-list/tag";
-import { RoomNotificationStateStore } from "../notifications/RoomNotificationStateStore";
-import { type SummarizedNotificationState } from "../notifications/SummarizedNotificationState";
-import { NotificationLevel } from "../notifications/NotificationLevel";
 import { storeRoomAliasInCache } from "../../RoomAliasCache.ts";
 
 vi.useFakeTimers();
@@ -121,14 +110,6 @@ describe("SpaceStore", () => {
         });
         await testUtils.setupAsyncStoreWithClient(store, client);
         vi.runOnlyPendingTimers();
-    };
-
-    const setShowAllRooms = async (value: boolean) => {
-        if (store.allRoomsInHome === value) return;
-        const emitProm = testUtils.emitPromise(store, UPDATE_HOME_BEHAVIOUR);
-        await SettingsStore.setValue("Spaces.allRoomsInHome", null, SettingLevel.DEVICE, value);
-        vi.runOnlyPendingTimers(); // run async dispatch
-        await emitProm;
     };
 
     beforeEach(async () => {
@@ -415,9 +396,20 @@ describe("SpaceStore", () => {
             });
 
             describe("isRoomInSpace()", () => {
-                it("home space contains orphaned rooms", () => {
-                    expect(store.isRoomInSpace(MetaSpace.Home, orphan1)).toBeTruthy();
-                    expect(store.isRoomInSpace(MetaSpace.Home, orphan2)).toBeTruthy();
+                it("home space does not contain orphaned rooms", () => {
+                    expect(store.isRoomInSpace(MetaSpace.Home, orphan1)).toBeFalsy();
+                    expect(store.isRoomInSpace(MetaSpace.Home, orphan2)).toBeFalsy();
+                });
+
+                it("other rooms space contains orphaned rooms but not dms", () => {
+                    expect(store.isRoomInSpace(MetaSpace.Orphans, orphan1)).toBeTruthy();
+                    expect(store.isRoomInSpace(MetaSpace.Orphans, orphan2)).toBeTruthy();
+                    expect(store.isRoomInSpace(MetaSpace.Orphans, dm1)).toBeFalsy();
+                    expect(store.isRoomInSpace(MetaSpace.Orphans, dm3)).toBeFalsy();
+                });
+
+                it("other rooms space does not contain spaces", () => {
+                    expect(store.isRoomInSpace(MetaSpace.Orphans, space1)).toBeFalsy();
                 });
 
                 it("home space does not contain all favourites", () => {
@@ -432,32 +424,22 @@ describe("SpaceStore", () => {
                     expect(store.isRoomInSpace(MetaSpace.Home, dm3)).toBeTruthy();
                 });
 
-                it("home space contains invites", () => {
-                    expect(store.isRoomInSpace(MetaSpace.Home, invite1)).toBeTruthy();
+                it("home space does not contain invites to group rooms", () => {
+                    expect(store.isRoomInSpace(MetaSpace.Home, invite1)).toBeFalsy();
+                    expect(store.isRoomInSpace(MetaSpace.Home, invite2)).toBeFalsy();
                 });
 
-                it("home space contains invites even if they are also shown in a space", () => {
-                    expect(store.isRoomInSpace(MetaSpace.Home, invite2)).toBeTruthy();
+                it("other rooms space contains group room invites only if they are outside a space", () => {
+                    expect(store.isRoomInSpace(MetaSpace.Orphans, invite1)).toBeTruthy();
+                    expect(store.isRoomInSpace(MetaSpace.Orphans, invite2)).toBeFalsy();
                 });
 
-                it("all rooms space does contain rooms/low priority even if they are also shown in a space", async () => {
-                    await setShowAllRooms(true);
-                    expect(store.isRoomInSpace(MetaSpace.Home, room1)).toBeTruthy();
-                });
-
-                it("orphans space does contain orphans even if they are also shown in all rooms", async () => {
-                    await setShowAllRooms(true);
-                    expect(store.isRoomInSpace(MetaSpace.Orphans, orphan1)).toBeTruthy();
-                    expect(store.isRoomInSpace(MetaSpace.Orphans, orphan2)).toBeTruthy();
-                });
-
-                it("home space doesn't contain rooms/low priority if they are also shown in a space", async () => {
-                    await setShowAllRooms(false);
+                it("home space ignores the all rooms setting", () => {
+                    expect(store.allRoomsInHome).toBe(false);
                     expect(store.isRoomInSpace(MetaSpace.Home, room1)).toBeFalsy();
                 });
 
                 it("video room space contains all video rooms", async () => {
-                    await setShowAllRooms(false);
                     expect(store.isRoomInSpace(MetaSpace.VideoRooms, videoRoomPublic)).toBeTruthy();
                     expect(store.isRoomInSpace(MetaSpace.VideoRooms, videoRoomPrivate)).toBeTruthy();
                     expect(store.isRoomInSpace(MetaSpace.VideoRooms, room1)).toBeFalsy();
@@ -562,15 +544,20 @@ describe("SpaceStore", () => {
                 });
             });
 
-            it("orphan rooms are added to Notification States for only the Home Space", async () => {
-                await setShowAllRooms(false);
+            it("orphan rooms are added to Notification States for only the Other rooms Space", async () => {
                 [orphan1, orphan2].forEach((d) => {
+                    expect(
+                        store
+                            .getNotificationState(MetaSpace.Orphans)
+                            .rooms.map((r) => r.roomId)
+                            .includes(d),
+                    ).toBeTruthy();
                     expect(
                         store
                             .getNotificationState(MetaSpace.Home)
                             .rooms.map((r) => r.roomId)
                             .includes(d),
-                    ).toBeTruthy();
+                    ).toBeFalsy();
                 });
                 [space1, space2, space3].forEach((s) => {
                     [orphan1, orphan2].forEach((d) => {
@@ -767,7 +754,50 @@ describe("SpaceStore", () => {
             expect(store.getChildSpaces(space1)).toStrictEqual([]);
             expect(store.getChildRooms(space1)).toStrictEqual([invite]);
             expect(store.isRoomInSpace(space1, invite1)).toBeTruthy();
+            expect(store.isRoomInSpace(MetaSpace.Home, invite1)).toBeFalsy();
+        });
+
+        it("dm invite gets added to the home space and not other rooms", async () => {
+            await run();
+
+            const invite = mkRoom(invite1);
+            invite.getMyMembership.mockReturnValue(KnownMembership.Invite);
+            invite.getDMInviter.mockReturnValue(dm1Partner.userId);
+            const prom = testUtils.emitPromise(store, MetaSpace.Home);
+            client.emit(ClientEvent.Room, invite);
+            await prom;
+
             expect(store.isRoomInSpace(MetaSpace.Home, invite1)).toBeTruthy();
+            expect(store.isRoomInSpace(MetaSpace.Orphans, invite1)).toBeFalsy();
+        });
+
+        it("room moves from home to other rooms when it stops being a dm", async () => {
+            mkRoom(dm1);
+            await run();
+            expect(store.isRoomInSpace(MetaSpace.Home, dm1)).toBeTruthy();
+            expect(store.isRoomInSpace(MetaSpace.Orphans, dm1)).toBeFalsy();
+
+            const original = getUserIdForRoomId.getMockImplementation()!;
+            getUserIdForRoomId.mockImplementation((roomId) => (roomId === dm1 ? undefined : original(roomId)));
+            try {
+                const prom = testUtils.emitPromise(store, MetaSpace.Orphans);
+                client.emit(
+                    ClientEvent.AccountData,
+                    mkEvent({ event: true, type: EventType.Direct, user: testUserId, content: {} }),
+                    mkEvent({
+                        event: true,
+                        type: EventType.Direct,
+                        user: testUserId,
+                        content: { [dm1Partner.userId]: [dm1] },
+                    }),
+                );
+                await prom;
+
+                expect(store.isRoomInSpace(MetaSpace.Home, dm1)).toBeFalsy();
+                expect(store.isRoomInSpace(MetaSpace.Orphans, dm1)).toBeTruthy();
+            } finally {
+                getUserIdForRoomId.mockImplementation(original);
+            }
         });
 
         describe("onRoomsUpdate()", () => {
@@ -1143,24 +1173,25 @@ describe("SpaceStore", () => {
             expect(store.activeSpace).toBe(MetaSpace.Orphans);
         });
 
-        it("switch to first valid space when selected metaspace is disabled", async () => {
-            viewRoom(room1);
+        it("keeps home and other rooms enabled even when the setting disables them", async () => {
+            viewRoom(orphan1);
             store.setActiveSpace(MetaSpace.Orphans, false);
             expect(store.activeSpace).toBe(MetaSpace.Orphans);
             await SettingsStore.setValue("Spaces.enabledMetaSpaces", null, SettingLevel.DEVICE, {
-                [MetaSpace.Home]: true,
+                [MetaSpace.Home]: false,
                 [MetaSpace.Orphans]: false,
+                [MetaSpace.VideoRooms]: true,
             });
             vi.runAllTimers();
-            expect(store.activeSpace).toBe(space1);
+            expect(store.enabledMetaSpaces).toStrictEqual([MetaSpace.Home, MetaSpace.Orphans, MetaSpace.VideoRooms]);
+            expect(store.activeSpace).toBe(MetaSpace.Orphans);
         });
 
-        it("when switching rooms in the all rooms home space don't switch to related space", async () => {
-            await setShowAllRooms(true);
+        it("when switching to a room in a space from home, switch to that space", async () => {
             viewRoom(room2);
             store.setActiveSpace(MetaSpace.Home, false);
             viewRoom(room1);
-            expect(store.activeSpace).toBe(MetaSpace.Home);
+            expect(store.activeSpace).not.toBe(MetaSpace.Home);
         });
 
         it("should check alias cache if switching to a room by alias", async () => {
@@ -1227,7 +1258,6 @@ describe("SpaceStore", () => {
     it("test user flow", async () => {
         // init the store
         await run();
-        await setShowAllRooms(false);
 
         // receive invite to space
         const rootSpace = mkSpace(space1, [room1, room2, space2]);
@@ -1265,7 +1295,7 @@ describe("SpaceStore", () => {
         expect(sdkContext.spaceStore.invitedSpaces).toStrictEqual([]);
         expect(sdkContext.spaceStore.spacePanelSpaces).toStrictEqual([rootSpace]);
         expect(sdkContext.spaceStore.isRoomInSpace(space1, room2)).toBeTruthy();
-        expect(sdkContext.spaceStore.isRoomInSpace(MetaSpace.Home, room2)).toBeTruthy();
+        expect(sdkContext.spaceStore.isRoomInSpace(MetaSpace.Home, room2)).toBeFalsy();
         expect(sdkContext.spaceStore.isRoomInSpace(MetaSpace.Orphans, room2)).toBeFalsy();
 
         // start DM in space
@@ -1348,9 +1378,7 @@ describe("SpaceStore", () => {
 
     describe("when feature_dynamic_room_predecessors is not enabled", () => {
         beforeAll(async () => {
-            vi.spyOn(SettingsStore, "getValue").mockImplementation(
-                (settingName) => settingName === "Spaces.allRoomsInHome",
-            );
+            vi.spyOn(SettingsStore, "getValue").mockImplementation(() => false);
             // @ts-ignore calling a private function
             await sdkContext.spaceStore.onAction({
                 action: Action.SettingUpdated,
@@ -1402,8 +1430,7 @@ describe("SpaceStore", () => {
     describe("when feature_dynamic_room_predecessors is enabled", () => {
         beforeAll(async () => {
             vi.spyOn(SettingsStore, "getValue").mockImplementation(
-                (settingName) =>
-                    settingName === "Spaces.allRoomsInHome" || settingName === "feature_dynamic_room_predecessors",
+                (settingName) => settingName === "feature_dynamic_room_predecessors",
             );
             // @ts-ignore calling a private function
             await sdkContext.spaceStore.onAction({
@@ -1450,109 +1477,6 @@ describe("SpaceStore", () => {
             expect(client.getVisibleRooms).toHaveBeenCalledWith(true);
             expect(client.getVisibleRooms).not.toHaveBeenCalledWith(false);
             expect(client.getVisibleRooms).not.toHaveBeenCalledWith();
-        });
-    });
-
-    describe("setActiveRoomInSpace", () => {
-        it("should work with Home as all rooms space", async () => {
-            const room = mkRoom(room1);
-            const state = RoomNotificationStateStore.instance.getRoomState(room);
-            // @ts-ignore
-            state._level = NotificationLevel.Notification;
-            vi.spyOn(RoomListStoreV3.instance, "getSortedRoomsInActiveSpace").mockReturnValue({
-                spaceId: MetaSpace.Home,
-                sections: [{ tag: DefaultTagID.Untagged, rooms: [room] }],
-            });
-
-            // init the store
-            await run();
-            await setShowAllRooms(true);
-
-            store.setActiveRoomInSpace(MetaSpace.Home);
-
-            expect(spyDispatcher).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    action: "view_room",
-                    room_id: room.roomId,
-                }),
-            );
-        });
-
-        it("should fall back to an unread room when the summary claims a mention no room has", async () => {
-            const room = mkRoom(room1);
-            const state = RoomNotificationStateStore.instance.getRoomState(room);
-            // @ts-ignore
-            state._level = NotificationLevel.Notification;
-            vi.spyOn(RoomListStoreV3.instance, "getSortedRoomsInActiveSpace").mockReturnValue({
-                spaceId: MetaSpace.Home,
-                sections: [{ tag: DefaultTagID.Untagged, rooms: [room] }],
-            });
-            // The summary the badge renders from lags behind the per-room states, so it can still
-            // claim a mention which no room state backs up any more.
-            vi.spyOn(RoomNotificationStateStore.instance, "globalState", "get").mockReturnValue({
-                hasMentions: true,
-            } as unknown as SummarizedNotificationState);
-
-            // init the store
-            await run();
-            await setShowAllRooms(true);
-            spyDispatcher.mockClear();
-
-            store.setActiveRoomInSpace(MetaSpace.Home);
-
-            expect(spyDispatcher).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    action: "view_room",
-                    room_id: room.roomId,
-                }),
-            );
-        });
-
-        it("should prefer a room with a mention over an earlier merely-unread room", async () => {
-            const unread = mkRoom(room1);
-            // @ts-ignore
-            RoomNotificationStateStore.instance.getRoomState(unread)._level = NotificationLevel.Notification;
-            const mentioned = mkRoom(room2);
-            // @ts-ignore
-            RoomNotificationStateStore.instance.getRoomState(mentioned)._level = NotificationLevel.Highlight;
-            vi.spyOn(RoomListStoreV3.instance, "getSortedRoomsInActiveSpace").mockReturnValue({
-                spaceId: MetaSpace.Home,
-                sections: [{ tag: DefaultTagID.Untagged, rooms: [unread, mentioned] }],
-            });
-
-            // init the store
-            await run();
-            await setShowAllRooms(true);
-            spyDispatcher.mockClear();
-
-            store.setActiveRoomInSpace(MetaSpace.Home);
-
-            expect(spyDispatcher).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    action: "view_room",
-                    room_id: mentioned.roomId,
-                }),
-            );
-        });
-
-        it("should do nothing when no room is unread", async () => {
-            const room = mkRoom(room1);
-            const state = RoomNotificationStateStore.instance.getRoomState(room);
-            // @ts-ignore
-            state._level = NotificationLevel.None;
-            vi.spyOn(RoomListStoreV3.instance, "getSortedRoomsInActiveSpace").mockReturnValue({
-                spaceId: MetaSpace.Home,
-                sections: [{ tag: DefaultTagID.Untagged, rooms: [room] }],
-            });
-
-            // init the store
-            await run();
-            await setShowAllRooms(true);
-            spyDispatcher.mockClear();
-
-            store.setActiveRoomInSpace(MetaSpace.Home);
-
-            expect(spyDispatcher).not.toHaveBeenCalledWith(expect.objectContaining({ action: "view_room" }));
         });
     });
 });

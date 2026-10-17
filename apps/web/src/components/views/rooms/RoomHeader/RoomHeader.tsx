@@ -40,6 +40,7 @@ import { formatCount } from "../../../../utils/FormattingUtils.ts";
 import PosthogTrackers from "../../../../PosthogTrackers.ts";
 import { VideoRoomChatButton } from "./VideoRoomChatButton.tsx";
 import { RoomKnocksBar } from "../RoomKnocksBar.tsx";
+import { MinimisedCallSlot } from "../../voip/MinimisedCallPill.tsx";
 import { isVideoRoom as calcIsVideoRoom } from "../../../../utils/video-rooms.ts";
 import { notificationLevelToIndicator } from "../../../../utils/notifications.ts";
 import { CallGuestLinkButton } from "./CallGuestLinkButton.tsx";
@@ -511,6 +512,7 @@ export default function RoomHeader({
                         </Text>
                     </Box>
                 </button>
+                <MinimisedCallSlot />
                 {/* If the room is local-only then we don't want to show any additional buttons, as it won't work */}
                 {room instanceof LocalRoom === false && <RoomHeaderButtons room={room} extraButtons={extraButtons} />}
             </Flex>

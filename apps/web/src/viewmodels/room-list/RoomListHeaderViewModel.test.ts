@@ -91,7 +91,7 @@ describe("RoomListHeaderViewModel", () => {
             vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
 
             const snapshot = vm.getSnapshot();
-            expect(snapshot.title).toBe("Home");
+            expect(snapshot.title).toBe("Direct Messages");
             expect(snapshot.displaySpaceMenu).toBe(false);
             expect(snapshot.canCreateRoom).toBe(true);
             expect(snapshot.canCreateVideoRoom).toBe(true);

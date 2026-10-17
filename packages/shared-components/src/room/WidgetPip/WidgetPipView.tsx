@@ -6,7 +6,7 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { type FC } from "react";
-import { ChevronLeftIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { ChevronLeftIcon, CollapseIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 import { IconButton } from "@vector-im/compound-web";
 
 import styles from "./WidgetPipView.module.css";
@@ -35,6 +35,12 @@ export interface WidgetPipViewActions {
      * @param ev The mouse event that triggered the drag start.
      */
     onStartMoving: (ev: React.MouseEvent) => void;
+    /**
+     * Collapses the PiP view out of the way. Only offered when the snapshot says the view is
+     * minimisable.
+     * @param ev The mouse event that triggered the minimise click.
+     */
+    onMinimiseClick?: (ev: React.MouseEvent) => void;
 }
 
 export interface WidgetPipViewSnapshot {
@@ -50,6 +56,10 @@ export interface WidgetPipViewSnapshot {
      * The room ID this PiP view’s widget is associated with.
      */
     roomId: string;
+    /**
+     * Whether the PiP view can be minimised (for example, calls can collapse into a pill).
+     */
+    minimisable?: boolean;
 }
 
 /**
@@ -99,6 +109,20 @@ export const WidgetPipView: FC<WidgetPipViewProps> = ({ vm, RoomAvatar }) => {
                 </IconButton>
                 <RoomAvatar className={styles.avatar} size="20px" />
                 <span className={styles.name}>{snapshot.roomName}</span>
+                {snapshot.minimisable && vm.onMinimiseClick && (
+                    <IconButton
+                        size="28px"
+                        className={styles.minimise}
+                        data-testid="widget-pip-minimise-button"
+                        onClick={(ev) => vm.onMinimiseClick?.(ev)}
+                        // Don't start dragging the PiP around when pressing the button
+                        onMouseDown={(ev) => ev.stopPropagation()}
+                        tooltip={_t("voip|minimise_call")}
+                        kind="secondary"
+                    >
+                        <CollapseIcon />
+                    </IconButton>
+                )}
             </div>
             <div className={styles.roundedCornerContainer}>
                 <vm.persistentAppComponent persistentWidgetId={snapshot.widgetId} persistentRoomId={snapshot.roomId} />

@@ -1,4 +1,5 @@
 /dist
+/dist-*
 /lib
 /webapp
 /webapp.asar

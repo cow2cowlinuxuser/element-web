@@ -25,10 +25,10 @@ export enum MetaSpace {
     VideoRooms = "video-rooms-space",
 }
 
-export const getMetaSpaceName = (spaceKey: MetaSpace, allRoomsInHome = false): string => {
+export const getMetaSpaceName = (spaceKey: MetaSpace): string => {
     switch (spaceKey) {
         case MetaSpace.Home:
-            return allRoomsInHome ? _t("common|all_chats") : _t("common|home");
+            return _t("common|direct_messages");
         case MetaSpace.Orphans:
             return _t("common|orphan_rooms");
         case MetaSpace.VideoRooms:

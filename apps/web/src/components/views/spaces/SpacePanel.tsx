@@ -14,21 +14,22 @@ import React, {
     type RefCallback,
     type SetStateAction,
     type JSX,
-    useCallback,
     useEffect,
     useLayoutEffect,
     useRef,
     useState,
     useContext,
+    useSyncExternalStore,
 } from "react";
 import { DragDropContext, Draggable, Droppable, type DroppableProvidedProps } from "react-beautiful-dnd";
 import classNames from "classnames";
 import { type Room } from "matrix-js-sdk/src/matrix";
 import {
-    HomeSolidIcon,
+    ChatSolidIcon,
     RoomIcon,
     VideoCallSolidIcon,
     PlusIcon,
+    ChevronLeftIcon,
     ChevronRightIcon,
 } from "@vector-im/compound-design-tokens/assets/web/icons";
 import { useCreateAutoDisposedViewModel, UserMenu } from "@element-hq/web-shared-components";
@@ -37,34 +38,24 @@ import { _t } from "../../../languageHandler";
 import { useContextMenu } from "../../structures/ContextMenu";
 import SpaceCreateMenu from "./SpaceCreateMenu";
 import { SpaceButton, SpaceItem } from "./SpaceTreeLevel";
-import { useEventEmitter, useEventEmitterState } from "../../../hooks/useEventEmitter";
+import { useEventEmitterState } from "../../../hooks/useEventEmitter";
 import {
     getMetaSpaceName,
     MetaSpace,
     type SpaceKey,
-    UPDATE_HOME_BEHAVIOUR,
     UPDATE_INVITED_SPACES,
     UPDATE_SELECTED_SPACE,
     UPDATE_TOP_LEVEL_SPACES,
 } from "../../../stores/spaces";
 import { RovingTabIndexProvider } from "../../../accessibility/RovingTabIndex";
-import { UPDATE_STATUS_INDICATOR } from "../../../stores/notifications/RoomNotificationStateStore";
-import type SpaceContextMenu from "../context_menus/SpaceContextMenu";
-import IconizedContextMenu, {
-    IconizedContextMenuCheckbox,
-    IconizedContextMenuOptionList,
-} from "../context_menus/IconizedContextMenu";
 import SettingsStore from "../../../settings/SettingsStore";
-import { SettingLevel } from "../../../settings/SettingLevel";
 import UIStore from "../../../stores/UIStore";
 import QuickSettingsButton from "./QuickSettingsButton";
-import { useSettingValue } from "../../../hooks/useSettings";
 import IndicatorScrollbar from "../../structures/IndicatorScrollbar";
 import { useDispatcher } from "../../../hooks/useDispatcher";
 import defaultDispatcher from "../../../dispatcher/dispatcher";
 import { type ActionPayload } from "../../../dispatcher/payloads";
 import { Action } from "../../../dispatcher/actions";
-import { type NotificationState } from "../../../stores/notifications/NotificationState";
 import { KeyBindingAction } from "../../../accessibility/KeyboardShortcuts";
 import { getKeyBindingsManager } from "../../../KeyBindingsManager";
 import { shouldShowComponent } from "../../../customisations/helpers/UIComponents";
@@ -78,7 +69,23 @@ import { useModuleSpacePanelItems } from "../../../modules/ExtrasApi.ts";
 import { UserMenuViewModel } from "../../../viewmodels/menus/UserMenuViewModel.ts";
 import { SDKContext } from "../../../contexts/SDKContext.ts";
 import { OwnProfileStore } from "../../../stores/OwnProfileStore.ts";
-import { type SDKContextClass } from "../../../contexts/SDKContextClass.ts";
+import { type ResizerViewModel } from "../../../viewmodels/structures/ResizerViewModel.ts";
+import { SpacePanelRooms } from "./SpacePanelRooms.tsx";
+import { UserVoiceDock } from "./UserVoiceDock.tsx";
+
+const noopUnsubscribe = (): void => {};
+const noopSubscribe = (): (() => void) => noopUnsubscribe;
+const getUndefinedSnapshot = (): undefined => undefined;
+const noopSetCollapsed: Dispatch<SetStateAction<boolean>> = () => {};
+
+function useOptionalResizerCollapsed(resizer?: ResizerViewModel): boolean | undefined {
+    const snapshot = useSyncExternalStore(
+        resizer ? resizer.subscribe : noopSubscribe,
+        resizer ? resizer.getSnapshot : getUndefinedSnapshot,
+        resizer ? resizer.getSnapshot : getUndefinedSnapshot,
+    );
+    return snapshot?.isCollapsed;
+}
 
 const useSpaces = (): [Room[], MetaSpace[], Room[], SpaceKey] => {
     const sdkContext = useContext(SDKContext);
@@ -94,35 +101,6 @@ const useSpaces = (): [Room[], MetaSpace[], Room[], SpaceKey] => {
         return sdkContext.spaceStore.activeSpace;
     });
     return [invites, metaSpaces, actualSpaces, activeSpace];
-};
-
-export const HomeButtonContextMenu: React.FC<ComponentProps<typeof SpaceContextMenu>> = ({
-    onFinished,
-    hideHeader,
-    ...props
-}) => {
-    const allRoomsInHome = useSettingValue("Spaces.allRoomsInHome");
-
-    return (
-        <IconizedContextMenu {...props} onFinished={onFinished} className="mx_SpacePanel_contextMenu" compact>
-            {!hideHeader && <div className="mx_SpacePanel_contextMenu_header">{_t("common|home")}</div>}
-            <IconizedContextMenuOptionList first>
-                <IconizedContextMenuCheckbox
-                    label={_t("settings|sidebar|metaspaces_home_all_rooms")}
-                    active={allRoomsInHome}
-                    onClick={() => {
-                        onFinished();
-                        void SettingsStore.setValue(
-                            "Spaces.allRoomsInHome",
-                            null,
-                            SettingLevel.ACCOUNT,
-                            !allRoomsInHome,
-                        );
-                    }}
-                />
-            </IconizedContextMenuOptionList>
-        </IconizedContextMenu>
-    );
 };
 
 interface IMetaSpaceButtonProps extends ComponentProps<typeof SpaceButton> {
@@ -147,35 +125,17 @@ const MetaSpaceButton: React.FC<IMetaSpaceButtonProps> = ({ selected, isPanelCol
     );
 };
 
-const getHomeNotificationState = (sdkContext: SDKContextClass): NotificationState => {
-    return sdkContext.spaceStore.allRoomsInHome
-        ? sdkContext.roomNotificationStateStore.globalState
-        : sdkContext.spaceStore.getNotificationState(MetaSpace.Home);
-};
-
 const HomeButton: React.FC<MetaSpaceButtonProps> = ({ selected, isPanelCollapsed }) => {
     const sdkContext = useContext(SDKContext);
-    const allRoomsInHome = useEventEmitterState(sdkContext.spaceStore, UPDATE_HOME_BEHAVIOUR, () => {
-        return sdkContext.spaceStore.allRoomsInHome;
-    });
-    const [notificationState, setNotificationState] = useState(getHomeNotificationState(sdkContext));
-    const updateNotificationState = useCallback(() => {
-        setNotificationState(getHomeNotificationState(sdkContext));
-    }, [sdkContext]);
-    useEffect(updateNotificationState, [updateNotificationState, allRoomsInHome]);
-    useEventEmitter(sdkContext.roomNotificationStateStore, UPDATE_STATUS_INDICATOR, updateNotificationState);
-
     return (
         <MetaSpaceButton
             spaceKey={MetaSpace.Home}
             selected={selected}
             isPanelCollapsed={isPanelCollapsed}
-            label={getMetaSpaceName(MetaSpace.Home, allRoomsInHome)}
-            notificationState={notificationState}
-            ContextMenuComponent={HomeButtonContextMenu}
-            contextMenuTooltip={_t("common|options")}
+            label={getMetaSpaceName(MetaSpace.Home)}
+            notificationState={sdkContext.spaceStore.getNotificationState(MetaSpace.Home)}
             size="32px"
-            icon={<HomeSolidIcon />}
+            icon={<ChatSolidIcon />}
         />
     );
 };
@@ -363,11 +323,97 @@ const InnerSpacePanel = React.memo<IInnerSpacePanelProps>(
     },
 );
 
-const SpacePanel: React.FC = () => {
+interface SpacePanelProps {
+    /** The room list's resizer. Its rooms are listed here while it is collapsed. */
+    resizer?: ResizerViewModel;
+}
+
+/**
+ * Horizontal Spaces header strip rendered at the top of the unified expanded LeftPanel.
+ */
+export const SpaceHeaderBar: React.FC<SpacePanelProps> = ({ resizer }) => {
+    const sdkContext = useContext(SDKContext);
+    const isResizerCollapsed = useOptionalResizerCollapsed(resizer);
+    const [invites, metaSpaces, actualSpaces, activeSpace] = useSpaces();
+    const moduleSpaceItems = useModuleSpacePanelItems(ModuleApi.instance.extras);
+
+    if (isResizerCollapsed === true) return null;
+
+    const activeSpaces = activeSpace ? [activeSpace] : [];
+    const metaSpacesSection = metaSpaces
+        .filter((key) => !(key === MetaSpace.VideoRooms && !SettingsStore.getValue("feature_video_rooms")))
+        .map((key) => {
+            const Component = metaSpaceComponentMap[key];
+            return <Component key={key} selected={activeSpace === key} isPanelCollapsed={true} />;
+        });
+
+    return (
+        <RovingTabIndexProvider handleHomeEnd handleLeftRight>
+            {({ onKeyDownHandler }) => (
+                <nav
+                    className="mx_SpacePanel collapsed mx_SpaceHeaderBar"
+                    aria-label={_t("common|spaces")}
+                    data-testid="unified-space-header"
+                    onKeyDown={onKeyDownHandler}
+                >
+                    <ul className="mx_SpaceHeaderBar_list" role="tree" aria-label={_t("common|spaces")}>
+                        {metaSpacesSection}
+                        {invites.map((s) => (
+                            <SpaceItem key={s.roomId} space={s} activeSpaces={activeSpaces} isPanelCollapsed={true} />
+                        ))}
+                        {actualSpaces.map((s) => (
+                            <SpaceItem key={s.roomId} space={s} activeSpaces={activeSpaces} isPanelCollapsed={true} />
+                        ))}
+                        {moduleSpaceItems.map((item) => (
+                            <li
+                                key={item.spaceKey}
+                                className="mx_SpaceItem collapsed"
+                                role="treeitem"
+                                aria-selected={activeSpace === item.spaceKey}
+                            >
+                                <SpaceButton
+                                    {...item}
+                                    isNarrow={true}
+                                    size="32px"
+                                    selected={activeSpace === item.spaceKey}
+                                    onClick={() => {
+                                        sdkContext.spaceStore.setActiveSpace(item.spaceKey);
+                                        item.onSelected?.();
+                                    }}
+                                />
+                            </li>
+                        ))}
+                        {shouldShowComponent(UIComponent.CreateSpaces) && (
+                            <CreateSpaceButton isPanelCollapsed={true} setPanelCollapsed={noopSetCollapsed} />
+                        )}
+                    </ul>
+                    <div className="mx_SpaceHeaderBar_actions">
+                        <ThreadsActivityCentre displayButtonLabel={false} />
+                        {resizer && (
+                            <button
+                                type="button"
+                                className="mx_SpaceHeaderBar_collapseButton"
+                                onClick={() => resizer.toggleCollapse()}
+                                aria-label={_t("action|collapse")}
+                                title={_t("action|collapse")}
+                                data-testid="unified-panel-collapse-button"
+                            >
+                                <ChevronLeftIcon width="18px" height="18px" />
+                            </button>
+                        )}
+                    </div>
+                </nav>
+            )}
+        </RovingTabIndexProvider>
+    );
+};
+
+const SpacePanel: React.FC<SpacePanelProps> = ({ resizer }) => {
     const sdkContext = useContext(SDKContext);
     const client = sdkContext.client!;
     const [dragging, setDragging] = useState(false);
     const [isPanelCollapsed, setPanelCollapsed] = useState(true);
+    const isResizerCollapsed = useOptionalResizerCollapsed(resizer);
     const ref = useRef<HTMLDivElement>(null);
     useLayoutEffect(() => {
         if (ref.current) UIStore.instance.trackElementDimensions("SpacePanel", ref.current);
@@ -376,7 +422,11 @@ const SpacePanel: React.FC = () => {
 
     useDispatcher(defaultDispatcher, (payload: ActionPayload) => {
         if (payload.action === Action.ToggleSpacePanel) {
-            setPanelCollapsed(!isPanelCollapsed);
+            if (resizer) {
+                resizer.toggleCollapse();
+            } else {
+                setPanelCollapsed(!isPanelCollapsed);
+            }
         }
     });
 
@@ -400,6 +450,19 @@ const SpacePanel: React.FC = () => {
         userMenuVm.setExpanded(!isPanelCollapsed);
     }, [userMenuVm, isPanelCollapsed]);
 
+    // When the unified LeftPanel is expanded, SpaceHeaderBar + RoomListPanel + UserVoiceDock
+    // render as one stretchable panel inside LeftResizablePanelView. Keep only the hidden
+    // UserMenu popover anchor here so Action.ToggleUserMenu opens at the bottom-left.
+    if (resizer && isResizerCollapsed === false) {
+        return (
+            <div className="mx_SpacePanel_userMenuAnchor" data-testid="space-panel-user-menu-anchor">
+                <UserMenu vm={userMenuVm} className="mx_UserMenu" />
+            </div>
+        );
+    }
+
+    const effectiveCollapsed = resizer ? true : isPanelCollapsed;
+
     return (
         <RovingTabIndexProvider handleHomeEnd handleUpDown={!dragging}>
             {({ onKeyDownHandler, onDragEndHandler }) => (
@@ -416,7 +479,8 @@ const SpacePanel: React.FC = () => {
                 >
                     <nav
                         className={classNames("mx_SpacePanel", {
-                            collapsed: isPanelCollapsed,
+                            collapsed: effectiveCollapsed,
+                            mx_SpacePanel_unifiedRail: Boolean(resizer),
                         })}
                         onKeyDown={(ev) => {
                             const navAction = getKeyBindingsManager().getNavigationAction(ev);
@@ -437,13 +501,18 @@ const SpacePanel: React.FC = () => {
                         ref={ref}
                         aria-label={_t("common|spaces")}
                     >
-                        <UserMenu vm={userMenuVm} className="mx_UserMenu" />
                         <AccessibleButton
                             className={classNames("mx_SpacePanel_toggleCollapse", {
-                                expanded: !isPanelCollapsed,
+                                expanded: !effectiveCollapsed,
                             })}
-                            onClick={() => setPanelCollapsed(!isPanelCollapsed)}
-                            title={isPanelCollapsed ? _t("action|expand") : _t("action|collapse")}
+                            onClick={() => {
+                                if (resizer) {
+                                    resizer.toggleCollapse();
+                                } else {
+                                    setPanelCollapsed(!isPanelCollapsed);
+                                }
+                            }}
+                            title={effectiveCollapsed ? _t("action|expand") : _t("action|collapse")}
                             caption={
                                 <KeyboardShortcut
                                     value={{ ctrlOrCmdKey: true, shiftKey: true, key: "d" }}
@@ -457,7 +526,7 @@ const SpacePanel: React.FC = () => {
                             {(provided, snapshot) => (
                                 <InnerSpacePanel
                                     {...provided.droppableProps}
-                                    isPanelCollapsed={isPanelCollapsed}
+                                    isPanelCollapsed={effectiveCollapsed}
                                     setPanelCollapsed={setPanelCollapsed}
                                     isDraggingOver={snapshot.isDraggingOver}
                                     innerRef={provided.innerRef}
@@ -467,9 +536,23 @@ const SpacePanel: React.FC = () => {
                             )}
                         </Droppable>
 
-                        <ThreadsActivityCentre displayButtonLabel={!isPanelCollapsed} />
+                        {resizer && <SpacePanelRooms resizer={resizer} isPanelCollapsed={effectiveCollapsed} />}
 
-                        <QuickSettingsButton isPanelCollapsed={isPanelCollapsed} />
+                        <ThreadsActivityCentre displayButtonLabel={!effectiveCollapsed} />
+
+                        {resizer ? (
+                            <>
+                                <UserVoiceDock isMinimized={true} />
+                                <div className="mx_SpacePanel_userMenuAnchor">
+                                    <UserMenu vm={userMenuVm} className="mx_UserMenu" />
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <QuickSettingsButton isPanelCollapsed={effectiveCollapsed} />
+                                <UserMenu vm={userMenuVm} className="mx_UserMenu" />
+                            </>
+                        )}
                     </nav>
                 </DragDropContext>
             )}

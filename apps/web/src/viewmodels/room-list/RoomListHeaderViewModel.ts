@@ -303,7 +303,7 @@ function getInitialSnapshot(spaceStore: SpaceStore, matrixClient: MatrixClient):
 function getHeaderTitle(spaceStore: SpaceStore): string {
     const activeSpace = spaceStore.activeSpaceRoom;
     const spaceName = activeSpace?.name;
-    return spaceName ?? getMetaSpaceName(spaceStore.activeSpace as MetaSpace, spaceStore.allRoomsInHome);
+    return spaceName ?? getMetaSpaceName(spaceStore.activeSpace as MetaSpace);
 }
 
 /**

@@ -65,6 +65,12 @@ export interface VirtualizedRoomListViewProps {
     renderAvatar: (room: Room) => ReactNode;
 
     /**
+     * Optional render function for content shown below a room, such as who is in its call
+     * @param room - The opaque Room object from the client
+     */
+    renderRoomFooter?: (room: Room) => ReactNode;
+
+    /**
      * Optional callback for keyboard key down events
      */
     onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
@@ -142,7 +148,12 @@ export function getScrollTargetEntryIndex(sections: { roomIds: string[] }[], roo
  * <VirtualizedRoomListView vm={roomListViewModel} renderAvatar={(room) => <Avatar room={room} />} />
  * ```
  */
-export function VirtualizedRoomListView({ vm, renderAvatar, onKeyDown }: VirtualizedRoomListViewProps): JSX.Element {
+export function VirtualizedRoomListView({
+    vm,
+    renderAvatar,
+    renderRoomFooter,
+    onKeyDown,
+}: VirtualizedRoomListViewProps): JSX.Element {
     const { translate: _t } = useI18n();
     const snapshot = useViewModel(vm);
     const { roomListState, sections, isFlatList } = snapshot;
@@ -368,6 +379,7 @@ export function VirtualizedRoomListView({ vm, renderAvatar, onKeyDown }: Virtual
                     key={roomId}
                     vm={roomItemVM}
                     renderAvatar={renderAvatar}
+                    renderRoomFooter={renderRoomFooter}
                     isSelected={isSelected}
                     isFocused={isFocused}
                     onFocus={onFocus}
@@ -381,7 +393,7 @@ export function VirtualizedRoomListView({ vm, renderAvatar, onKeyDown }: Virtual
                 />
             );
         },
-        [renderAvatar],
+        [renderAvatar, renderRoomFooter],
     );
 
     /**

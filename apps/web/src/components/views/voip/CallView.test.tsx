@@ -137,4 +137,21 @@ describe("CallView", () => {
         });
         expect(onClose).not.toHaveBeenCalled();
     });
+
+    it("renders floating overlay class and backdrop when tileOverlayOpen is true", async () => {
+        const closeOverlaySpy = vi.spyOn(call, "closeTileOverlay").mockResolvedValue();
+        await renderView("region");
+
+        act(() => {
+            (call as unknown as { _tileOverlayOpen: boolean })._tileOverlayOpen = true;
+            call.emit(CallEvent.TileOverlay, true);
+        });
+
+        expect(screen.getByRole("region")).toHaveClass("mx_CallView_floatingOverlay");
+        const backdrop = screen.getByTestId("call-overlay-backdrop");
+        act(() => {
+            backdrop.click();
+        });
+        expect(closeOverlaySpy).toHaveBeenCalledOnce();
+    });
 });

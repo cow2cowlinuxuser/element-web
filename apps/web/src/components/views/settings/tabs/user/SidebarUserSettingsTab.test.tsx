@@ -48,43 +48,43 @@ describe("<SidebarUserSettingsTab />", () => {
         spySettingsStore.mockRestore();
     });
 
-    it("toggles all rooms in home setting", async () => {
-        vi.spyOn(SettingsStore, "getValue").mockImplementation((settingName) => {
-            if (settingName === "Spaces.enabledMetaSpaces") {
-                return {
-                    [MetaSpace.Home]: true,
-                    [MetaSpace.Orphans]: true,
-                };
-            }
-            return false;
-        });
-        render(<SidebarUserSettingsTab />);
-
-        fireEvent.click(screen.getByTestId("mx_SidebarUserSettingsTab_homeAllRoomsCheckbox"));
-
-        await flushPromises();
-        expect(SettingsStore.setValue).toHaveBeenCalledWith("Spaces.allRoomsInHome", null, SettingLevel.ACCOUNT, true);
-
-        expect(PosthogTrackers.trackInteraction).toHaveBeenCalledWith(
-            "WebSettingsSidebarTabSpacesCheckbox",
-            // synthetic event from checkbox
-            expect.objectContaining({ type: "change" }),
-            1,
-        );
-    });
-
-    it("disables all rooms in home setting when home space is disabled", () => {
+    it("always shows direct messages and other rooms as enabled, even if the setting disables them", () => {
         vi.spyOn(SettingsStore, "getValue").mockImplementation((settingName) => {
             if (settingName === "Spaces.enabledMetaSpaces") {
                 return {
                     [MetaSpace.Home]: false,
-                    [MetaSpace.Orphans]: true,
+                    [MetaSpace.Orphans]: false,
                 };
             }
             return false;
         });
         render(<SidebarUserSettingsTab />);
 
-        expect(screen.getByTestId("mx_SidebarUserSettingsTab_homeAllRoomsCheckbox")).toBeDisabled();
+        for (const name of [/Direct Messages/, /Rooms outside of a space/]) {
+            const checkbox = screen.getByRole("checkbox", { name });
+            expect(checkbox).toBeChecked();
+            expect(checkbox).toBeDisabled();
+        }
+        expect(screen.queryByText("Show all rooms")).toBeNull();
+    });
+
+    it("toggles video rooms", async () => {
+        vi.spyOn(SettingsStore, "getValue").mockImplementation((settingName) => {
+            if (settingName === "Spaces.enabledMetaSpaces") return {};
+            return settingName === "feature_video_rooms";
+        });
+        render(<SidebarUserSettingsTab />);
+
+        fireEvent.click(screen.getByRole("checkbox", { name: /Video rooms and conferences/ }));
+
+        await flushPromises();
+        expect(SettingsStore.setValue).toHaveBeenCalledWith("Spaces.enabledMetaSpaces", null, SettingLevel.ACCOUNT, {
+            [MetaSpace.VideoRooms]: true,
+        });
+        expect(PosthogTrackers.trackInteraction).toHaveBeenCalledWith(
+            "WebSettingsSidebarTabSpacesCheckbox",
+            expect.objectContaining({ type: "change" }),
+            3,
+        );
     });
 });

@@ -117,8 +117,6 @@ const SpellCheckSection: React.FC = () => {
 };
 
 export default class PreferencesUserSettingsTab extends React.Component<EmptyObject, IState> {
-    private static SPACES_SETTINGS: BooleanSettingKey[] = ["Spaces.allRoomsInHome"];
-
     private static KEYBINDINGS_SETTINGS: BooleanSettingKey[] = ["ctrlFForSearch"];
 
     private static PRESENCE_SETTINGS: BooleanSettingKey[] = ["sendReadReceipts", "sendTypingNotifications"];
@@ -283,10 +281,6 @@ export default class PreferencesUserSettingsTab extends React.Component<EmptyObj
                             level={SettingLevel.ACCOUNT}
                             requires={["RoomList.showSections"]}
                         />
-                    </SettingsSubsection>
-
-                    <SettingsSubsection heading={_t("common|spaces")} formWrap>
-                        {this.renderGroup(PreferencesUserSettingsTab.SPACES_SETTINGS, SettingLevel.ACCOUNT)}
                     </SettingsSubsection>
 
                     <SettingsSubsection

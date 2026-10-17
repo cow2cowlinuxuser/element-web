@@ -13,7 +13,25 @@ import { describe, it, expect, vi } from "vitest";
 
 import * as stories from "./RoomListItemWrapper.stories";
 
-const { Sections } = composeStories(stories);
+const { FlatList, Sections } = composeStories(stories);
+
+describe("<RoomListItemWrapper /> room footer", () => {
+    it.each([
+        ["flat list", FlatList],
+        ["sections", Sections],
+    ])("renders the footer under the room in a %s", (_, Story) => {
+        const renderRoomFooter = vi.fn(() => <div data-testid="footer">In a call</div>);
+        render(<Story renderRoomFooter={renderRoomFooter} />);
+
+        expect(screen.getByTestId("footer")).toBeInTheDocument();
+        expect(renderRoomFooter).toHaveBeenCalledWith(expect.objectContaining({ name: "Room name" }));
+    });
+
+    it("renders nothing extra without a footer", () => {
+        render(<FlatList />);
+        expect(screen.queryByTestId("footer")).toBeNull();
+    });
+});
 
 describe("<RoomListItemWrapper /> keyboard re-dispatch", () => {
     it("ArrowLeft on the first room of a section re-dispatches as ArrowUp", async () => {

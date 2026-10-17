@@ -696,6 +696,26 @@ describe("RoomView", () => {
             await findByRole(await screen.findByRole("complementary"), "heading", { name: room.roomId });
         });
 
+        it("renders the chat timeline on the left and the compact voice pane on the right when viewing a call", async () => {
+            await mountRoomView();
+
+            await act(() =>
+                stores.roomViewStore.viewRoom({
+                    action: Action.ViewRoom,
+                    room_id: stores.roomViewStore.getRoomId()!,
+                    event_id: "$eventId",
+                    metricsTrigger: undefined,
+                    view_call: true,
+                }),
+            );
+
+            const split = screen.getByTestId("room-call-split");
+            const chatPane = screen.getByTestId("room-call-chat-pane");
+            const voicePane = screen.getByTestId("room-call-voice-pane");
+            expect(split.firstElementChild).toBe(chatPane);
+            expect(split.lastElementChild).toBe(voicePane);
+        });
+
         it("hides the right panel chat when returning to a room that previously showed a call", async () => {
             const room2 = new Room(`!roomswitchtest:example.org`, cli, "@alice:example.org");
             rooms.set(room2.roomId, room2);

@@ -76,6 +76,14 @@ export class ElementWebHostBridge implements ElementCallHostBridge {
         this.call.handleDeviceMute(state);
     };
 
+    public readonly notifyParticipants = async (state: unknown): Promise<void> => {
+        this.call.handleParticipants(state);
+    };
+
+    public readonly notifyTileOverlay = async (state: { open: boolean }): Promise<void> => {
+        this.call.handleTileOverlay(state.open);
+    };
+
     public readonly close = async (): Promise<void> => {
         this.call.handleClose();
     };

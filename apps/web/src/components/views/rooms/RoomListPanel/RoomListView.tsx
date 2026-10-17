@@ -21,6 +21,7 @@ import { KeyBindingAction } from "../../../../accessibility/KeyboardShortcuts";
 import { Landmark, LandmarkNavigation } from "../../../../accessibility/LandmarkNavigation";
 import { RoomListViewModel } from "../../../../viewmodels/room-list/RoomListViewModel";
 import { SDKContext } from "../../../../contexts/SDKContext.ts";
+import { RoomCallParticipants } from "./RoomCallParticipants";
 
 /**
  * RoomListView component using shared components with proper MVVM pattern.
@@ -59,5 +60,17 @@ export function RoomListView(): JSX.Element {
         }
     }, []);
 
-    return <SharedRoomListView vm={vm} renderAvatar={renderAvatar} onKeyDown={onKeyDown} />;
+    const renderRoomFooter = useCallback((room: SharedRoom): ReactNode => {
+        if (room instanceof Room) return <RoomCallParticipants room={room} />;
+        return null;
+    }, []);
+
+    return (
+        <SharedRoomListView
+            vm={vm}
+            renderAvatar={renderAvatar}
+            renderRoomFooter={renderRoomFooter}
+            onKeyDown={onKeyDown}
+        />
+    );
 }

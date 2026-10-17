@@ -7,12 +7,13 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { type FC, useContext, useEffect, type AriaRole, useCallback } from "react";
+import classNames from "classnames";
 
 import type { Room } from "matrix-js-sdk/src/matrix";
 import { type Call, CallEvent } from "../../../models/Call";
 import { CallAppTile } from "./CallAppTile";
 import { CallStore } from "../../../stores/CallStore";
-import { useTypedEventEmitter } from "../../../hooks/useEventEmitter";
+import { useTypedEventEmitter, useTypedEventEmitterState } from "../../../hooks/useEventEmitter";
 import { useCall } from "../../../hooks/useCall";
 import { SDKContext } from "../../../contexts/SDKContext.ts";
 
@@ -32,6 +33,12 @@ const JoinCallView: FC<JoinCallViewProps> = ({ room, resizing, call, role, onClo
         if (call.presented) onClose();
     });
 
+    const tileOverlayOpen = useTypedEventEmitterState(
+        call,
+        CallEvent.TileOverlay,
+        useCallback(() => call.tileOverlayOpen, [call]),
+    );
+
     useEffect(() => {
         // We'll take this opportunity to tidy up our room state
         void call.clean();
@@ -47,18 +54,33 @@ const JoinCallView: FC<JoinCallViewProps> = ({ room, resizing, call, role, onClo
     }, [sdkContext.roomViewStore]);
 
     return (
-        <div className="mx_CallView" role={role}>
-            <CallAppTile
-                app={call.widget}
-                room={room}
-                userId={sdkContext.client?.credentials.userId ?? undefined}
-                creatorUserId={call.widget.creatorUserId}
-                waitForIframeLoad={call.widget.waitForIframeLoad}
-                showMenubar={false}
-                pointerEvents={resizing ? "none" : undefined}
-                stickyPromise={disconnectAllOtherCalls}
-            />
-        </div>
+        <>
+            {tileOverlayOpen && (
+                <div
+                    role="presentation"
+                    className="mx_CallView_overlayBackdrop"
+                    data-testid="call-overlay-backdrop"
+                    onClick={() => void call.closeTileOverlay()}
+                />
+            )}
+            <div
+                className={classNames("mx_CallView", {
+                    mx_CallView_floatingOverlay: tileOverlayOpen,
+                })}
+                role={role}
+            >
+                <CallAppTile
+                    app={call.widget}
+                    room={room}
+                    userId={sdkContext.client?.credentials.userId ?? undefined}
+                    creatorUserId={call.widget.creatorUserId}
+                    waitForIframeLoad={call.widget.waitForIframeLoad}
+                    showMenubar={false}
+                    pointerEvents={resizing ? "none" : undefined}
+                    stickyPromise={disconnectAllOtherCalls}
+                />
+            </div>
+        </>
     );
 };
 

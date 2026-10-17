@@ -95,9 +95,77 @@ export enum ConnectionState {
 export const isConnected = (state: ConnectionState): boolean =>
     state === ConnectionState.Connected || state === ConnectionState.Disconnecting;
 
+/**
+ * Someone in the call as Element Call reports them, with what they are doing right now. Only
+ * available while the user is in the call, since it comes from Element Call itself.
+ */
+export interface ElementCallParticipant {
+    /** Distinguishes one device of a user from another. */
+    id: string;
+    userId: string;
+    displayName: string;
+    local: boolean;
+    speaking: boolean;
+    audioEnabled: boolean;
+    videoEnabled: boolean;
+    screenSharing: boolean;
+    playbackMuted?: boolean;
+}
+
+export interface ParticipantAudioOptions {
+    user_id: string;
+    muted?: boolean;
+    volume?: number;
+    pan?: number;
+    bass?: number;
+    mid?: number;
+    treble?: number;
+    reset?: boolean;
+}
+
+/**
+ * Reads the participants out of an `io.element.call_participants` request, skipping anything
+ * malformed rather than trusting the widget.
+ */
+export function parseElementCallParticipants(data: unknown): ElementCallParticipant[] {
+    const list = (data as { participants?: unknown } | null | undefined)?.participants;
+    if (!Array.isArray(list)) return [];
+    const participants: ElementCallParticipant[] = [];
+    for (const p of list) {
+        if (typeof p !== "object" || p === null) continue;
+        const {
+            id,
+            user_id,
+            display_name,
+            local,
+            speaking,
+            audio_enabled,
+            video_enabled,
+            screen_sharing,
+            playback_muted,
+        } = p as Record<string, unknown>;
+        if (typeof id !== "string" || typeof user_id !== "string") continue;
+        participants.push({
+            id,
+            userId: user_id,
+            displayName: typeof display_name === "string" && display_name ? display_name : user_id,
+            local: local === true,
+            speaking: speaking === true,
+            audioEnabled: audio_enabled === true,
+            videoEnabled: video_enabled === true,
+            screenSharing: screen_sharing === true,
+            ...(playback_muted === true ? { playbackMuted: true } : {}),
+        });
+    }
+    return participants;
+}
+
 export enum CallEvent {
     ConnectionState = "connection_state",
     Participants = "participants",
+    LiveParticipants = "live_participants",
+    DeviceMute = "device_mute",
+    TileOverlay = "tile_overlay",
     Close = "close",
     Destroy = "destroy",
     CallTypeChanged = "call_type_changed",
@@ -109,6 +177,9 @@ interface CallEventHandlerMap {
         participants: Map<RoomMember, Set<string>>,
         prevParticipants: Map<RoomMember, Set<string>>,
     ) => void;
+    [CallEvent.LiveParticipants]: (participants: ElementCallParticipant[]) => void;
+    [CallEvent.DeviceMute]: (state: { audioMuted: boolean; videoMuted: boolean; deafened: boolean }) => void;
+    [CallEvent.TileOverlay]: (open: boolean) => void;
     [CallEvent.Close]: () => void;
     [CallEvent.Destroy]: () => void;
     [CallEvent.CallTypeChanged]: (callType: CallType) => void;
@@ -180,6 +251,91 @@ export abstract class Call extends TypedEventEmitter<CallEvent, CallEventHandler
         this._participants = value;
         this.emit(CallEvent.Participants, value, prevValue);
     }
+
+    private _liveParticipants: ElementCallParticipant[] = [];
+    /**
+     * Who is in the call and what they are doing, as reported by the call itself while the user
+     * is connected. Empty otherwise, and for calls that don't report it.
+     */
+    public get liveParticipants(): ElementCallParticipant[] {
+        return this._liveParticipants;
+    }
+    protected set liveParticipants(value: ElementCallParticipant[]) {
+        this._liveParticipants = value;
+        const local = value.find((p) => p.local);
+        if (local) {
+            const nextAudioMuted = !local.audioEnabled;
+            const nextVideoMuted = !local.videoEnabled;
+            if (nextAudioMuted !== this._audioMuted || nextVideoMuted !== this._videoMuted) {
+                this._audioMuted = nextAudioMuted;
+                this._videoMuted = nextVideoMuted;
+                this.emit(CallEvent.DeviceMute, {
+                    audioMuted: this._audioMuted,
+                    videoMuted: this._videoMuted,
+                    deafened: this._deafened,
+                });
+            }
+        }
+        this.emit(CallEvent.LiveParticipants, value);
+    }
+
+    protected _audioMuted = false;
+    public get audioMuted(): boolean {
+        return this._audioMuted;
+    }
+
+    protected _videoMuted = true;
+    public get videoMuted(): boolean {
+        return this._videoMuted;
+    }
+
+    protected _deafened = Call.readDeafenedFromStorage();
+    public get deafened(): boolean {
+        return this._deafened;
+    }
+
+    protected _tileOverlayOpen = false;
+    public get tileOverlayOpen(): boolean {
+        return this._tileOverlayOpen;
+    }
+
+    protected static readDeafenedFromStorage(): boolean {
+        try {
+            return JSON.parse(localStorage.getItem("matrix-setting-mute-all-audio") ?? "false") === true;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Asks the call to show a user in the spotlight, or with null to go back to following whoever
+     * is speaking. Does nothing for calls that don't support it.
+     */
+    public async focusParticipant(_userId: string | null): Promise<void> {}
+
+    /**
+     * Updates local audio/video/deafen mute state in the call.
+     */
+    public async setDeviceMute(_opts: {
+        audio_enabled?: boolean;
+        video_enabled?: boolean;
+        deafened?: boolean;
+    }): Promise<void> {}
+
+    /**
+     * Toggles screen sharing in the call.
+     */
+    public async toggleScreenSharing(): Promise<void> {}
+
+    /**
+     * Adjusts playback audio settings (mute, volume, pan, EQ, or reset) for a participant in the call.
+     */
+    public async setParticipantAudio(_opts: ParticipantAudioOptions): Promise<void> {}
+
+    /**
+     * Closes the expanded floating tile overlay in the call.
+     */
+    public async closeTileOverlay(): Promise<void> {}
 
     private _presented = false;
     /**
@@ -299,6 +455,7 @@ export abstract class Call extends TypedEventEmitter<CallEvent, CallEventHandler
         this.room.off(RoomEvent.MyMembership, this.onMyMembership);
         window.removeEventListener("beforeunload", this.beforeUnload);
         this.connectionState = ConnectionState.Disconnected;
+        if (this.liveParticipants.length > 0) this.liveParticipants = [];
     }
 
     /**
@@ -1008,6 +1165,8 @@ export class ElementCall extends Call {
         widgetApi.on(`action:${ElementWidgetActions.HangupCall}`, this.onHangup);
         widgetApi.on(`action:${ElementWidgetActions.Close}`, this.onClose);
         widgetApi.on(`action:${ElementWidgetActions.DeviceMute}`, this.onDeviceMute);
+        widgetApi.on(`action:${ElementWidgetActions.ElementCallParticipants}`, this.onCallParticipants);
+        widgetApi.on(`action:${ElementWidgetActions.TileOverlay}`, this.onTileOverlay);
         return widgetApi;
     }
 
@@ -1084,7 +1243,14 @@ export class ElementCall extends Call {
             this.widgetApi.off(`action:${ElementWidgetActions.HangupCall}`, this.onHangup);
             this.widgetApi.off(`action:${ElementWidgetActions.Close}`, this.onClose);
             this.widgetApi.off(`action:${ElementWidgetActions.DeviceMute}`, this.onDeviceMute);
+            this.widgetApi.off(`action:${ElementWidgetActions.ElementCallParticipants}`, this.onCallParticipants);
+            this.widgetApi.off(`action:${ElementWidgetActions.TileOverlay}`, this.onTileOverlay);
         }
+        if (this._tileOverlayOpen) {
+            this._tileOverlayOpen = false;
+            this.emit(CallEvent.TileOverlay, false);
+        }
+        if (this.liveParticipants.length > 0) this.liveParticipants = [];
         // A start() still waiting on the component should learn that the call went away, rather than hang
         // until the timeout. Usually nothing is waiting, so mark the promise as handled first: an
         // unobserved rejection would otherwise surface as an unhandled promise rejection.
@@ -1174,15 +1340,129 @@ export class ElementCall extends Call {
     }
 
     /** Element Call reports its mute state (`HostBridge.notifyDeviceMute` / `io.element.device_mute`). */
-    public handleDeviceMute(_state?: DeviceMuteState): void {
-        // Nothing to do yet; Element Web does not track the call's mute state.
+    public handleDeviceMute(state?: DeviceMuteState): void {
+        if (state) {
+            this._audioMuted = !state.audio_enabled;
+            this._videoMuted = !state.video_enabled;
+        }
+        this._deafened = Call.readDeafenedFromStorage();
+        this.emit(CallEvent.DeviceMute, {
+            audioMuted: this._audioMuted,
+            videoMuted: this._videoMuted,
+            deafened: this._deafened,
+        });
     }
 
     private readonly onDeviceMute = (ev: CustomEvent<IWidgetApiRequest>): void => {
         ev.preventDefault();
         this.widgetApi!.transport.reply(ev.detail, {}); // ack
-        this.handleDeviceMute();
+        const data = ev.detail?.data as Partial<DeviceMuteState> | undefined;
+        this.handleDeviceMute(
+            data && typeof data.audio_enabled === "boolean" && typeof data.video_enabled === "boolean"
+                ? { audio_enabled: data.audio_enabled, video_enabled: data.video_enabled }
+                : undefined,
+        );
     };
+
+    /** Element Call reports who is in the call (`io.element.call_participants`). */
+    public handleParticipants(data: unknown): void {
+        this.liveParticipants = parseElementCallParticipants(data);
+    }
+
+    private readonly onCallParticipants = (ev: CustomEvent<IWidgetApiRequest>): void => {
+        ev.preventDefault();
+        this.widgetApi!.transport.reply(ev.detail, {}); // ack
+        this.handleParticipants(ev.detail.data);
+    };
+
+    public handleTileOverlay(open: boolean): void {
+        if (this._tileOverlayOpen === open) return;
+        this._tileOverlayOpen = open;
+        this.emit(CallEvent.TileOverlay, open);
+    }
+
+    private readonly onTileOverlay = (ev: CustomEvent<IWidgetApiRequest>): void => {
+        ev.preventDefault();
+        this.widgetApi!.transport.reply(ev.detail, {}); // ack
+        const open = (ev.detail?.data as { open?: unknown } | undefined)?.open === true;
+        this.handleTileOverlay(open);
+    };
+
+    public async focusParticipant(userId: string | null): Promise<void> {
+        // Only the widget embedding understands this request
+        if (!this.widgetApi) return;
+        try {
+            await this.widgetApi.transport.send(ElementWidgetActions.FocusParticipant, { user_id: userId });
+        } catch (e) {
+            logger.warn(`Failed to focus ${userId} in the call in ${this.roomId}`, e);
+        }
+    }
+
+    public async setDeviceMute(opts: {
+        audio_enabled?: boolean;
+        video_enabled?: boolean;
+        deafened?: boolean;
+    }): Promise<void> {
+        if (typeof opts.audio_enabled === "boolean") {
+            this._audioMuted = !opts.audio_enabled;
+        }
+        if (typeof opts.video_enabled === "boolean") {
+            this._videoMuted = !opts.video_enabled;
+        }
+        if (typeof opts.deafened === "boolean") {
+            this._deafened = opts.deafened;
+            try {
+                localStorage.setItem("matrix-setting-mute-all-audio", JSON.stringify(opts.deafened));
+            } catch {
+                // Ignore storage errors
+            }
+        }
+        this.emit(CallEvent.DeviceMute, {
+            audioMuted: this._audioMuted,
+            videoMuted: this._videoMuted,
+            deafened: this._deafened,
+        });
+        if (!this.widgetApi) return;
+        try {
+            await this.widgetApi.transport.send(ElementWidgetActions.DeviceMute, opts);
+        } catch (e) {
+            logger.warn(`Failed to update device mute in the call in ${this.roomId}`, e);
+        }
+    }
+
+    public async toggleScreenSharing(): Promise<void> {
+        if (!this.widgetApi) return;
+        try {
+            await this.widgetApi.transport.send(ElementWidgetActions.ScreenShare, {});
+        } catch (e) {
+            logger.warn(`Failed to toggle screen sharing in the call in ${this.roomId}`, e);
+        }
+    }
+
+    public async setParticipantAudio(opts: ParticipantAudioOptions): Promise<void> {
+        if (typeof opts.muted === "boolean" || opts.reset === true) {
+            const nextMuted = opts.reset ? false : Boolean(opts.muted);
+            this.liveParticipants = this.liveParticipants.map((p) =>
+                p.userId === opts.user_id ? { ...p, playbackMuted: nextMuted ? true : undefined } : p,
+            );
+        }
+        if (!this.widgetApi) return;
+        try {
+            await this.widgetApi.transport.send(ElementWidgetActions.ParticipantAudio, { ...opts });
+        } catch (e) {
+            logger.warn(`Failed to update participant audio for ${opts.user_id} in ${this.roomId}`, e);
+        }
+    }
+
+    public async closeTileOverlay(): Promise<void> {
+        this.handleTileOverlay(false);
+        if (!this.widgetApi) return;
+        try {
+            await this.widgetApi.transport.send(ElementWidgetActions.TileOverlay, { open: false });
+        } catch (e) {
+            logger.warn(`Failed to close tile overlay in ${this.roomId}`, e);
+        }
+    }
 
     private readonly onJoin = (ev: CustomEvent<IWidgetApiRequest>): void => {
         ev.preventDefault();

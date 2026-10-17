@@ -321,6 +321,7 @@ export interface Settings {
     "notificationSound": IBaseSetting<NotificationSound | false>;
     "notificationBodyEnabled": IBaseSetting<boolean>;
     "audioNotificationsEnabled": IBaseSetting<boolean>;
+    "notificationSoundVolume": IBaseSetting<number>;
     "enableWidgetScreenshots": IBaseSetting<boolean>;
     "promptBeforeInviteUnknownUsers": IBaseSetting<boolean>;
     "widgetOpenIDPermissions": IBaseSetting<{
@@ -1202,7 +1203,9 @@ export const SETTINGS: Settings = {
         displayName: _td("settings|notifications|enable_notifications_device"),
     },
     "notificationSound": {
-        supportedLevels: LEVELS_ROOM_OR_ACCOUNT,
+        // ROOM_DEVICE holds sounds kept only on this device (see LocalNotificationSounds), and takes
+        // precedence over an uploaded sound in ROOM_ACCOUNT.
+        supportedLevels: [SettingLevel.ROOM_DEVICE, ...LEVELS_ROOM_OR_ACCOUNT],
         default: false,
         // Contains personal information in file name
         shouldExportToRageshake: false,
@@ -1217,6 +1220,12 @@ export const SETTINGS: Settings = {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         default: true,
         displayName: _td("settings|notifications|enable_audible_notifications_session"),
+    },
+    "notificationSoundVolume": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        // Percent of the sound file's own level.
+        default: 100,
+        displayName: _td("settings|notifications|notification_sound_volume"),
     },
     "enableWidgetScreenshots": {
         supportedLevels: LEVELS_ACCOUNT_SETTINGS,

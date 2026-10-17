@@ -761,11 +761,9 @@ describe("Spotlight Dialog", () => {
             vi.spyOn(mockedClient, "isVersionSupported").mockImplementation(() => new Promise(() => {}));
         });
 
-        it("should show Home metaspace", async () => {
+        it("should show the Direct Messages metaspace", async () => {
             const onFinished = vi.fn();
-            const { asFragment, container } = render(
-                <SpotlightDialog initialText={MetaSpace.Home.split("-")[0]} onFinished={onFinished} />,
-            );
+            const { asFragment, container } = render(<SpotlightDialog initialText="Direct" onFinished={onFinished} />);
             await waitFor(() =>
                 expect(container.querySelector(".mx_SpotlightDialog_metaspaceResult")).toBeInTheDocument(),
             );

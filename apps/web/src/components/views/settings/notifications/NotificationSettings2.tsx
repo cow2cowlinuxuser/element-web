@@ -32,6 +32,7 @@ import { SettingsSection } from "../shared/SettingsSection";
 import { SettingsSubsection } from "../shared/SettingsSubsection";
 import { NotificationPusherSettings } from "./NotificationPusherSettings";
 import SettingsFlag from "../../elements/SettingsFlag";
+import { NotificationSoundVolume } from "./NotificationSoundVolume";
 import { SettingsSubsectionHeading } from "../shared/SettingsSubsectionHeading";
 import { onSubmitPreventDefault } from "../../../../utils/form.ts";
 
@@ -144,6 +145,7 @@ export default function NotificationSettings2(): JSX.Element {
                         level={SettingLevel.DEVICE}
                     />
                     <SettingsFlag name="audioNotificationsEnabled" level={SettingLevel.DEVICE} />
+                    <NotificationSoundVolume />
                 </Form.Root>
                 <SettingsSubsection
                     heading={

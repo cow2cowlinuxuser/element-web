@@ -23,3 +23,86 @@ Please see LICENSE files in the repository root for full details.
         background-color: $call-background;
     }
 }
+
+.mx_RoomView_callSplit {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.mx_RoomView_callChatPane {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+}
+
+.mx_RoomView_callVoicePane {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    min-width: 220px;
+    max-width: 75%;
+    min-height: 0;
+    border-left: 1px solid var(--cpd-color-border-interactive-secondary);
+    background-color: $header-panel-bg-color;
+}
+
+.mx_RoomView_callVoicePane_resizer {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+
+    .mx_ResizeHandle--horizontal {
+        z-index: 100;
+
+        &::before {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            height: 56px;
+            width: 4px;
+            border-radius: 4px;
+            content: "";
+            background-color: var(--cpd-color-border-interactive-primary);
+            opacity: 0.45;
+            transition:
+                opacity 0.15s ease,
+                background-color 0.15s ease;
+        }
+
+        &:hover::before {
+            background-color: $primary-content;
+            opacity: 0.95;
+        }
+    }
+
+    &:hover .mx_ResizeHandle--horizontal::before {
+        opacity: 0.8;
+    }
+}
+
+.mx_CallView_overlayBackdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 90;
+    background-color: rgb(0 0 0 / 55%);
+    backdrop-filter: blur(4px);
+}
+
+.mx_CallView_floatingOverlay {
+    position: absolute;
+    inset: 24px;
+    z-index: 100;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--cpd-color-border-interactive-primary);
+    box-shadow: 0 24px 64px rgb(0 0 0 / 65%);
+}

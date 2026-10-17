@@ -368,3 +368,104 @@ Please see LICENSE files in the repository root for full details.
         text-transform: capitalize;
     }
 }
+
+.mx_SpacePanel_userMenuAnchor {
+    position: fixed;
+    left: var(--cpd-space-3x);
+    bottom: 56px;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 100;
+}
+
+.mx_SpacePanel.mx_SpacePanel_unifiedRail {
+    .mx_ThreadsActivityCentre_container {
+        justify-content: center;
+        margin-bottom: var(--cpd-space-1x);
+    }
+
+    .mx_ThreadsActivityCentreButton {
+        margin: var(--cpd-space-1x) auto;
+    }
+}
+
+.mx_SpacePanel.mx_SpaceHeaderBar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cpd-space-1-5x);
+    padding: var(--cpd-space-1-5x) var(--cpd-space-2x);
+    border-right: none;
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    flex-shrink: 0;
+    box-sizing: border-box;
+
+    .mx_SpaceHeaderBar_list {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: var(--cpd-space-1x);
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        padding: 2px 0;
+        list-style: none;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+    }
+
+    .mx_SpaceItem {
+        flex-shrink: 0;
+        display: inline-flex;
+    }
+
+    .mx_SpaceItem:not(.hasSubSpaces) > .mx_SpaceButton,
+    .mx_SpaceItem > .mx_SpaceButton {
+        margin-left: 0;
+        min-width: 0;
+        width: auto;
+        padding: 2px;
+    }
+
+    .mx_SpaceButton_toggleCollapse {
+        display: none;
+    }
+
+    .mx_SpaceHeaderBar_actions {
+        display: flex;
+        align-items: center;
+        gap: var(--cpd-space-1x);
+        flex-shrink: 0;
+        padding-left: var(--cpd-space-1-5x);
+        border-left: 1px solid var(--cpd-color-border-interactive-secondary);
+
+        .mx_ThreadsActivityCentreButton {
+            margin: 0;
+        }
+    }
+
+    .mx_SpaceHeaderBar_collapseButton {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border: none;
+        border-radius: 8px;
+        background: none;
+        color: var(--cpd-color-icon-secondary);
+        cursor: pointer;
+
+        &:hover,
+        &:focus-visible {
+            background-color: var(--cpd-color-bg-action-tertiary-hovered);
+            color: var(--cpd-color-icon-primary);
+        }
+    }
+}

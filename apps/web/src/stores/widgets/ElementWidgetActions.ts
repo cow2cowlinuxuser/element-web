@@ -43,6 +43,22 @@ export enum ElementWidgetActions {
     // NOTE: this is currently unused. Its only here to make EW aware
     // of this action so it does not throw errors.
     DeviceMute = "io.element.device_mute",
+
+    // fromWidget: Element Call reports who is in the call, who is speaking and who is
+    // sharing their screen. Data: { participants: ElementCallParticipant[] }
+    ElementCallParticipants = "io.element.call_participants",
+    // toWidget: asks Element Call to show a user in the spotlight.
+    // Data: { user_id: string | null }
+    FocusParticipant = "io.element.focus_participant",
+
+    // toWidget: adjusts per-participant playback audio (mute, volume, pan, bass, mid, treble, reset).
+    ParticipantAudio = "io.element.participant_audio",
+
+    // toWidget: toggles screen sharing in Element Call.
+    ScreenShare = "io.element.screen_share",
+
+    // fromWidget / toWidget: notifies or updates whether the floating tile overlay is open in Element Call.
+    TileOverlay = "io.element.tile_overlay",
 }
 
 export interface IHangupCallApiRequest extends IWidgetApiRequest {

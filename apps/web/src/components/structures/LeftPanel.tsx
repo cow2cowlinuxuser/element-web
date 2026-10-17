@@ -12,11 +12,15 @@ import classNames from "classnames";
 import type ResizeNotifier from "../../utils/ResizeNotifier";
 import { type SpaceKey, UPDATE_SELECTED_SPACE } from "../../stores/spaces";
 import { RoomListPanel } from "../views/rooms/RoomListPanel";
+import { SpaceHeaderBar } from "../views/spaces/SpacePanel";
+import { UserVoiceDock } from "../views/spaces/UserVoiceDock";
 import { SDKContext } from "../../contexts/SDKContext.ts";
+import { type ResizerViewModel } from "../../viewmodels/structures/ResizerViewModel.ts";
 
 interface IProps {
     isMinimized: boolean;
     resizeNotifier: ResizeNotifier;
+    resizer?: ResizerViewModel;
 }
 
 interface IState {
@@ -56,7 +60,9 @@ export default class LeftPanel extends React.Component<IProps, IState> {
         return (
             <div className={containerClasses}>
                 <div className="mx_LeftPanel_roomListContainer">
+                    <SpaceHeaderBar resizer={this.props.resizer} />
                     <RoomListPanel activeSpace={this.state.activeSpace} />
+                    <UserVoiceDock isMinimized={this.props.isMinimized} />
                 </div>
             </div>
         );

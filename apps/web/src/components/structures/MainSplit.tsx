@@ -68,7 +68,9 @@ export default class MainSplit extends React.Component<IProps> {
         elementRef: HTMLElement,
         delta: NumberSize,
     ): void => {
-        const newSize = this.loadSidePanelSize().width + delta.width;
+        const rawSize =
+            elementRef.offsetWidth > 0 ? elementRef.offsetWidth : this.loadSidePanelSize().width + delta.width;
+        const newSize = Math.max(240, rawSize);
         this.context.resizeNotifier.stopResizing();
         window.localStorage.setItem(this.sizeSettingStorageKey, newSize.toString());
 
@@ -105,8 +107,8 @@ export default class MainSplit extends React.Component<IProps> {
                 <Resizable
                     key={this.props.sizeKey}
                     defaultSize={this.loadSidePanelSize()}
-                    minWidth={320}
-                    maxWidth="50%"
+                    minWidth={240}
+                    maxWidth="75%"
                     enable={{
                         top: false,
                         right: false,

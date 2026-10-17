@@ -14,7 +14,7 @@ import { getByTestId } from "storybook/test";
 
 import * as stories from "./WidgetPipView.stories.tsx";
 
-const { Default } = composeStories(stories);
+const { Default, Minimisable } = composeStories(stories);
 
 describe("WidgetPipView", () => {
     it("renders", () => {
@@ -47,5 +47,18 @@ describe("WidgetPipView", () => {
         const pipContainer = getByTestId(container, "widget-pip-container");
         await userEvent.click(pipContainer);
         expect(onStartMoving).toHaveBeenCalled();
+    });
+    it("only offers to minimise when minimisable", () => {
+        const { queryByTestId } = render(<Default />);
+        expect(queryByTestId("widget-pip-minimise-button")).toBeNull();
+    });
+    it("minimises without starting a drag", async () => {
+        const onMinimiseClick = vi.fn();
+        const onStartMoving = vi.fn();
+        const { getByRole } = render(<Minimisable onMinimiseClick={onMinimiseClick} onStartMoving={onStartMoving} />);
+
+        await userEvent.click(getByRole("button", { name: "Minimise call" }));
+        expect(onMinimiseClick).toHaveBeenCalled();
+        expect(onStartMoving).not.toHaveBeenCalled();
     });
 });

@@ -64,10 +64,16 @@ import { type ThreadPayload } from "./dispatcher/payloads/ThreadPayload";
 import { Action } from "./dispatcher/actions";
 import { addReplyToMessageContent } from "./utils/Reply";
 import type * as audioCompat from "./audio/compat";
+import { loadLocalSound } from "./audio/LocalNotificationSounds";
 
 vi.mock("./utils/notifications", async () => ({
     ...(await vi.importActual<typeof notificationsUtils>("./utils/notifications")),
     createLocalNotificationSettingsIfNeeded: vi.fn(),
+}));
+
+vi.mock("./audio/LocalNotificationSounds", async (importActual) => ({
+    ...(await importActual<typeof import("./audio/LocalNotificationSounds")>()),
+    loadLocalSound: vi.fn(),
 }));
 
 vi.mock("./audio/compat", async () => ({
@@ -607,6 +613,8 @@ describe("Notifier", () => {
             // It's not ideal to only look at whether this function has been called
             // but avoids starting to look into DOM stuff
             notifier.getSoundForRoom = vi.fn();
+            // @ts-ignore - backgroundAudio is private
+            vi.spyOn(notifier.backgroundAudio, "pickFormatAndPlay").mockResolvedValue({} as any);
 
             await mockClient.setAccountData(accountDataEventKey, event!);
             await notifier.playAudioNotification(testEvent, testRoom);
@@ -695,8 +703,8 @@ describe("Notifier", () => {
             await notifier.playAudioNotification(testEvent, otherRoom);
 
             expect(customPlaySpy).toHaveBeenCalledTimes(2);
-            expect(customPlaySpy).toHaveBeenNthCalledWith(1, soundA.url);
-            expect(customPlaySpy).toHaveBeenNthCalledWith(2, soundB.url);
+            expect(customPlaySpy).toHaveBeenNthCalledWith(1, soundA.url, false, { volume: 1 });
+            expect(customPlaySpy).toHaveBeenNthCalledWith(2, soundB.url, false, { volume: 1 });
             customPlaySpy.mockRestore();
         });
 
@@ -714,6 +722,159 @@ describe("Notifier", () => {
             await mockClient.setAccountData(accountDataEventKey, { is_silenced: false });
             await notifier.playAudioNotification(testEvent, testRoom);
             expect(playSpy).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe("custom notification sounds", () => {
+        const mxc = "mxc://server/sound";
+        const legacyUrl = "https://server/_matrix/media/v3/download/server/sound";
+        const authedUrl = "https://server/_matrix/client/v1/media/download/server/sound";
+        let settings: Record<string, unknown>;
+        let playSpy: MockInstance;
+        let defaultPlaySpy: MockInstance;
+
+        beforeEach(async () => {
+            accountDataStore = {};
+            await mockClient.setAccountData(accountDataEventKey, { is_silenced: false });
+
+            settings = {
+                notificationSound: { url: mxc, name: "sound.mp3" },
+                notificationSoundVolume: 100,
+            };
+            vi.spyOn(SettingsStore, "getValue").mockImplementation((name: string, ...params: any[]): any =>
+                name in settings ? settings[name] : settingsStoreGetValue(name as any, ...params),
+            );
+
+            mockClient.getAccessToken = vi.fn().mockReturnValue("token");
+            mockClient.isVersionSupported = vi.fn().mockResolvedValue(true);
+            // Mocking the client method itself, which both the Media helper and Notifier call.
+            // eslint-disable-next-line no-restricted-properties
+            mockClient.mxcUrlToHttp = vi
+                .fn()
+                .mockImplementation((_mxc, _w, _h, _m, _direct, _redirects, useAuthentication) =>
+                    useAuthentication ? authedUrl : legacyUrl,
+                );
+
+            // @ts-ignore - backgroundAudio is private
+            playSpy = vi.spyOn(notifier.backgroundAudio, "play").mockResolvedValue({} as any);
+            // @ts-ignore - backgroundAudio is private
+            defaultPlaySpy = vi.spyOn(notifier.backgroundAudio, "pickFormatAndPlay").mockResolvedValue({} as any);
+        });
+
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it("fetches the sound from the authenticated endpoint with the access token", async () => {
+            await notifier.playAudioNotification(testEvent, testRoom);
+
+            expect(playSpy).toHaveBeenCalledWith(authedUrl, false, {
+                volume: 1,
+                requestInit: { headers: { Authorization: "Bearer token" } },
+            });
+            expect(defaultPlaySpy).not.toHaveBeenCalled();
+        });
+
+        it("uses the legacy URL when the server does not support authenticated media", async () => {
+            mockClient.isVersionSupported = vi.fn().mockResolvedValue(false);
+
+            await notifier.playAudioNotification(testEvent, testRoom);
+
+            expect(playSpy).toHaveBeenCalledWith(expect.stringContaining("/_matrix/media/v3/download/"), false, {
+                volume: 1,
+            });
+        });
+
+        it("plays the default sound when the custom sound fails", async () => {
+            playSpy.mockRejectedValue(new Error("HTTP 404"));
+
+            await notifier.playAudioNotification(testEvent, testRoom);
+
+            expect(defaultPlaySpy).toHaveBeenCalledWith("media/message", ["mp3", "ogg"], false, { volume: 1 });
+        });
+
+        it("applies the volume setting", async () => {
+            settings.notificationSoundVolume = 40;
+
+            await notifier.playAudioNotification(testEvent, testRoom);
+
+            expect(playSpy).toHaveBeenCalledWith(authedUrl, false, expect.objectContaining({ volume: 0.4 }));
+        });
+
+        describe("sounds kept on this device", () => {
+            const localUrl = "element-local-sound:!room1:server:1";
+            let playDataSpy: MockInstance;
+
+            beforeEach(() => {
+                settings.notificationSound = { url: localUrl, name: "local.mp3" };
+                // @ts-ignore - backgroundAudio is private
+                playDataSpy = vi.spyOn(notifier.backgroundAudio, "playData");
+            });
+
+            it("plays the stored file without fetching anything", async () => {
+                vi.mocked(loadLocalSound).mockResolvedValue(new ArrayBuffer(1));
+                playDataSpy.mockImplementation(async (_key: string, load: () => Promise<ArrayBuffer>) => {
+                    await load();
+                    return {} as any;
+                });
+
+                await notifier.playAudioNotification(testEvent, testRoom);
+
+                expect(playDataSpy).toHaveBeenCalledWith(localUrl, expect.any(Function), false, { volume: 1 });
+                expect(loadLocalSound).toHaveBeenCalledWith(localUrl);
+                expect(playSpy).not.toHaveBeenCalled();
+                expect(defaultPlaySpy).not.toHaveBeenCalled();
+            });
+
+            it("plays the default sound when the stored file is missing", async () => {
+                vi.mocked(loadLocalSound).mockResolvedValue(undefined);
+                playDataSpy.mockImplementation(async (_key: string, load: () => Promise<ArrayBuffer>) => {
+                    await load();
+                    return {} as any;
+                });
+
+                await notifier.playAudioNotification(testEvent, testRoom);
+
+                expect(defaultPlaySpy).toHaveBeenCalled();
+            });
+
+            it("reports the local sound as is", () => {
+                expect(notifier.getSoundForRoom(roomId)).toEqual(expect.objectContaining({ url: localUrl }));
+            });
+        });
+
+        it("plays nothing when the volume is 0", async () => {
+            settings.notificationSoundVolume = 0;
+
+            await notifier.playAudioNotification(testEvent, testRoom);
+
+            expect(playSpy).not.toHaveBeenCalled();
+            expect(defaultPlaySpy).not.toHaveBeenCalled();
+        });
+
+        describe("previewSoundForRoom", () => {
+            it("plays the custom sound, ignoring the throttle", async () => {
+                await notifier.playAudioNotification(testEvent, testRoom);
+                await notifier.previewSoundForRoom(roomId);
+
+                expect(playSpy).toHaveBeenCalledTimes(2);
+            });
+
+            it("reports a failing custom sound instead of falling back", async () => {
+                playSpy.mockRejectedValue(new Error("HTTP 404"));
+
+                await expect(notifier.previewSoundForRoom(roomId)).rejects.toThrow("HTTP 404");
+                expect(defaultPlaySpy).not.toHaveBeenCalled();
+            });
+
+            it("plays the default sound when the room has no custom sound", async () => {
+                settings.notificationSound = false;
+                settings.notificationSoundVolume = 50;
+
+                await notifier.previewSoundForRoom(roomId);
+
+                expect(defaultPlaySpy).toHaveBeenCalledWith("media/message", ["mp3", "ogg"], false, { volume: 0.5 });
+            });
         });
     });
 

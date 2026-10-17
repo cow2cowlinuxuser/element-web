@@ -141,6 +141,29 @@ exports[`<Notifications /> > correctly handles the loading/disabled state 1`] = 
               </label>
             </div>
           </div>
+          <div
+            class="mx_NotificationSoundVolume"
+          >
+            <label
+              for="react-use-id-2"
+            >
+              Notification sound volume
+            </label>
+            <input
+              id="react-use-id-2"
+              max="100"
+              min="0"
+              step="5"
+              type="range"
+              value="100"
+            />
+            <output
+              for="react-use-id-2"
+            >
+              100
+              %
+            </output>
+          </div>
         </form>
         <div
           class="mx_SettingsSubsection"
@@ -789,7 +812,7 @@ exports[`<Notifications /> > correctly handles the loading/disabled state 1`] = 
                       class="_container"
                     >
                       <input
-                        aria-describedby="react-use-id-2"
+                        aria-describedby="react-use-id-3"
                         checked=""
                         class="_input"
                         disabled=""
@@ -829,7 +852,7 @@ exports[`<Notifications /> > correctly handles the loading/disabled state 1`] = 
                     </label>
                     <span
                       class="_message _help-message"
-                      id="react-use-id-2"
+                      id="react-use-id-3"
                     >
                       Enter keywords here, or use for spelling variations or nicknames
                     </span>
@@ -1198,6 +1221,29 @@ exports[`<Notifications /> > matches the snapshot 1`] = `
                 Enable audible notifications for this device
               </label>
             </div>
+          </div>
+          <div
+            class="mx_NotificationSoundVolume"
+          >
+            <label
+              for="react-use-id-2"
+            >
+              Notification sound volume
+            </label>
+            <input
+              id="react-use-id-2"
+              max="100"
+              min="0"
+              step="5"
+              type="range"
+              value="100"
+            />
+            <output
+              for="react-use-id-2"
+            >
+              100
+              %
+            </output>
           </div>
         </form>
         <div
@@ -1836,7 +1882,7 @@ exports[`<Notifications /> > matches the snapshot 1`] = `
                       class="_container"
                     >
                       <input
-                        aria-describedby="react-use-id-2"
+                        aria-describedby="react-use-id-3"
                         checked=""
                         class="_input"
                         id="checkbox_qsxEaZtl3A"
@@ -1875,7 +1921,7 @@ exports[`<Notifications /> > matches the snapshot 1`] = `
                     </label>
                     <span
                       class="_message _help-message"
-                      id="react-use-id-2"
+                      id="react-use-id-3"
                     >
                       Enter keywords here, or use for spelling variations or nicknames
                     </span>

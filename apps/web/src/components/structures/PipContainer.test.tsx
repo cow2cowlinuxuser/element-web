@@ -50,6 +50,7 @@ import WidgetStore from "../../stores/WidgetStore";
 import { WidgetType } from "../../widgets/WidgetType";
 import { SDKContextClass } from "../../contexts/SDKContextClass";
 import { type WidgetMessaging } from "../../stores/widgets/WidgetMessaging";
+import { MinimisedCallPipStore } from "../../stores/MinimisedCallPipStore";
 
 vi.mock("../../stores/OwnProfileStore", () => ({
     OwnProfileStore: {
@@ -213,6 +214,44 @@ describe("PipContainer", () => {
             });
             defaultDispatcher.unregister(dispatcherRef);
         });
+    });
+
+    it("minimises an active call into a pill and restores it", async () => {
+        renderPip();
+
+        await withCall(async () => {
+            screen.getByRole("complementary");
+
+            await user.click(screen.getByRole("button", { name: "Minimise call" }));
+            expect(screen.queryByRole("complementary")).toBeNull();
+            const pill = screen.getByTestId("minimised-call-pill");
+            // With no room header to dock into, the pill floats at the top of the window
+            expect(pill.closest(".mx_MinimisedCallPill_floating")).not.toBeNull();
+
+            await user.click(pill);
+            screen.getByRole("complementary");
+            expect(screen.queryByTestId("minimised-call-pill")).toBeNull();
+        });
+    });
+
+    it("docks the minimised call's pill into the room header when there is one", async () => {
+        const slot = document.createElement("div");
+        document.body.appendChild(slot);
+        act(() => MinimisedCallPipStore.instance.setSlot(slot));
+        renderPip();
+
+        try {
+            await withCall(async () => {
+                await user.click(screen.getByRole("button", { name: "Minimise call" }));
+                expect(slot.querySelector("[data-testid='minimised-call-pill']")).not.toBeNull();
+            });
+        } finally {
+            act(() => {
+                MinimisedCallPipStore.instance.setSlot(null);
+                MinimisedCallPipStore.instance.setMinimised(false);
+            });
+            slot.remove();
+        }
     });
 
     it("shows a persistent widget with back button when viewing the room", async () => {

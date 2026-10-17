@@ -419,7 +419,8 @@
             "unknown_room": "Unknown room %(roomId)s",
             "unmute_audio": "Unmute audio",
             "unmute_video": "Unmute video"
-        }
+        },
+        "minimise_call": "Minimise call"
     },
     "widget": {
         "context_menu": {

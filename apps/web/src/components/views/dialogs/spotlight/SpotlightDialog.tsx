@@ -35,7 +35,6 @@ import {
     RoomIcon,
     SpaceIcon,
     UserProfileIcon,
-    HomeIcon,
     GroupIcon,
     CloseIcon,
     LinkIcon,
@@ -152,7 +151,7 @@ function filterToIcon(filter: Filter): JSX.Element {
 function metaspaceToIcon(key: MetaSpace): JSX.Element | undefined {
     switch (key) {
         case MetaSpace.Home:
-            return <HomeIcon />;
+            return <ChatIcon />;
         case MetaSpace.Orphans:
             return <RoomIcon />;
     }
@@ -423,7 +422,7 @@ const SpotlightDialog: React.FC<IProps> = ({ initialText = "", initialFilter = n
                 section: Section.Spaces,
                 filter: [] as Filter[],
                 avatar: <div className="mx_SpotlightDialog_metaspaceResult">{metaspaceToIcon(spaceKey)}</div>,
-                name: getMetaSpaceName(spaceKey, SDKContextClass.instance.spaceStore.allRoomsInHome),
+                name: getMetaSpaceName(spaceKey),
                 onClick() {
                     SDKContextClass.instance.spaceStore.setActiveSpace(spaceKey);
                 },

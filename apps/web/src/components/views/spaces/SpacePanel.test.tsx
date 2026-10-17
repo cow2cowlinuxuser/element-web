@@ -22,9 +22,10 @@ import { UIComponent } from "../../../settings/UIFeature";
 import DMRoomMap from "../../../utils/DMRoomMap";
 import { type SpaceNotificationState } from "../../../stores/notifications/SpaceNotificationState";
 import SettingsStore from "../../../settings/SettingsStore";
-import UnwrappedSpacePanel from "./SpacePanel";
+import UnwrappedSpacePanel, { SpaceHeaderBar as UnwrappedSpaceHeaderBar } from "./SpacePanel";
 import defaultDispatcher from "../../../dispatcher/dispatcher";
 import { Action } from "../../../dispatcher/actions";
+import { type ResizerViewModel } from "../../../viewmodels/structures/ResizerViewModel";
 
 // DND test utilities based on
 // https://github.com/colinrobertbrooks/react-beautiful-dnd-test-utils/issues/18#issuecomment-1373388693
@@ -115,6 +116,10 @@ describe("<SpacePanel />", () => {
         getClientWellKnown: vi.fn(),
         mxcUrlToHttp: vi.fn(),
         getRoom: vi.fn(),
+        getRooms: vi.fn().mockReturnValue([]),
+        getVisibleRooms: vi.fn().mockReturnValue([]),
+        cachedRtcTransports: { wait: vi.fn().mockResolvedValue([]) },
+        matrixRTC: { on: vi.fn(), off: vi.fn() },
         isGuest: vi.fn(),
         getAccountData: vi.fn(),
         on: vi.fn(),
@@ -127,6 +132,7 @@ describe("<SpacePanel />", () => {
     } as unknown as MatrixClient;
     const sdkContext = new TestSDKContext();
     const SpacePanel = wrapInSdkContext(wrapInMatrixClientContext(UnwrappedSpacePanel), sdkContext);
+    const SpaceHeaderBar = wrapInSdkContext(wrapInMatrixClientContext(UnwrappedSpaceHeaderBar), sdkContext);
 
     beforeAll(() => {
         vi.spyOn(MatrixClientPeg, "get").mockReturnValue(mockClient);
@@ -135,6 +141,7 @@ describe("<SpacePanel />", () => {
     });
 
     beforeEach(() => {
+        sdkContext.spaceStore.enabledMetaSpaces.length = 0;
         sdkContext.spaceStore.enabledMetaSpaces.push(MetaSpace.Home, MetaSpace.Orphans, MetaSpace.VideoRooms);
         vi.mocked(shouldShowComponent).mockClear().mockReturnValue(true);
     });
@@ -161,7 +168,7 @@ describe("<SpacePanel />", () => {
                 .getByRole("button", { name: /^(?!Options$).*/ }) // filter out the 'options' buttons within the buttons
                 .getAttribute("aria-label"),
         );
-        expect(metaSpaceLabels).toEqual(["Home", "Other rooms", "Conferences"]);
+        expect(metaSpaceLabels).toEqual(["Direct Messages", "Other rooms", "Conferences"]);
 
         spySettingsStore.mockRestore();
     });
@@ -211,6 +218,54 @@ describe("<SpacePanel />", () => {
         await waitFor(() => {
             // Menu exists outside the component due to Portals, so select it manually.
             expect(baseElement.querySelector("div[aria-label='User menu']")).toBeInTheDocument();
+        });
+    });
+
+    describe("unified single-panel mode with resizer", () => {
+        const makeMockResizer = (isCollapsed: boolean): ResizerViewModel => {
+            const snapshot = { isCollapsed, initialSize: isCollapsed ? 0 : 34 };
+            return {
+                getSnapshot: () => snapshot,
+                subscribe: () => () => {},
+                toggleCollapse: vi.fn(),
+            } as unknown as ResizerViewModel;
+        };
+
+        it("hides the side rail and keeps the user menu anchor when resizer is expanded", async () => {
+            const resizer = makeMockResizer(false);
+            const { baseElement } = render(<SpacePanel resizer={resizer} />);
+
+            expect(screen.getByTestId("space-panel-user-menu-anchor")).toBeInTheDocument();
+            expect(screen.queryByRole("navigation", { name: "Spaces" })).not.toBeInTheDocument();
+
+            defaultDispatcher.dispatch({ action: Action.ToggleUserMenu });
+            await waitFor(() => {
+                expect(baseElement.querySelector("div[aria-label='User menu']")).toBeInTheDocument();
+            });
+        });
+
+        it("renders the 68px rail with compact UserVoiceDock when resizer is collapsed", () => {
+            const resizer = makeMockResizer(true);
+            render(<SpacePanel resizer={resizer} />);
+
+            expect(screen.getByRole("navigation", { name: "Spaces" })).toHaveClass("mx_SpacePanel_unifiedRail");
+            expect(screen.getByTestId("user-voice-dock")).toHaveClass("mx_UserVoiceDock_minimized");
+        });
+
+        it("renders SpaceHeaderBar when expanded and collapses via button click", () => {
+            const resizer = makeMockResizer(false);
+            render(<SpaceHeaderBar resizer={resizer} />);
+
+            expect(screen.getByTestId("unified-space-header")).toBeInTheDocument();
+            fireEvent.click(screen.getByTestId("unified-panel-collapse-button"));
+            expect(resizer.toggleCollapse).toHaveBeenCalledTimes(1);
+        });
+
+        it("hides SpaceHeaderBar when resizer is collapsed", () => {
+            const resizer = makeMockResizer(true);
+            render(<SpaceHeaderBar resizer={resizer} />);
+
+            expect(screen.queryByTestId("unified-space-header")).not.toBeInTheDocument();
         });
     });
 });

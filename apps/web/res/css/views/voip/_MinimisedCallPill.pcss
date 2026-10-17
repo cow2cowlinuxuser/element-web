@@ -1,0 +1,76 @@
+/*
+Copyright 2026 Element Creations Ltd.
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+/* The spot in the room header the pill docks into. It takes no space of its own. */
+.mx_MinimisedCallSlot {
+    display: contents;
+}
+
+/* Used when there is no room header to dock into (e.g. on the home page) */
+.mx_MinimisedCallPill_floating {
+    position: fixed;
+    top: var(--cpd-space-3x);
+    right: var(--cpd-space-4x);
+    z-index: 100;
+}
+
+.mx_MinimisedCallPill {
+    display: flex;
+    align-items: center;
+    gap: var(--cpd-space-1-5x);
+    max-width: 220px;
+    height: 32px;
+    padding: 0 var(--cpd-space-3x);
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: 16px;
+    background: var(--cpd-color-bg-canvas-default);
+    color: var(--cpd-color-text-primary);
+    font: var(--cpd-font-body-sm-medium);
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow: 0 0 var(--cpd-space-1x) rgb(0 0 0 / 10%);
+
+    &:hover {
+        border-color: var(--cpd-color-border-interactive-hovered);
+        background: var(--cpd-color-bg-subtle-secondary);
+    }
+}
+
+.mx_MinimisedCallPill_speaking {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cpd-color-icon-tertiary);
+    transition:
+        background-color 0.15s ease,
+        box-shadow 0.15s ease;
+
+    &[data-speaking="true"] {
+        background: var(--cpd-color-icon-success-primary);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--cpd-color-icon-success-primary) 30%, transparent);
+    }
+}
+
+.mx_MinimisedCallPill_icon {
+    flex-shrink: 0;
+    color: var(--cpd-color-icon-accent-primary);
+}
+
+.mx_MinimisedCallPill_name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mx_MinimisedCallPill_count {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    color: var(--cpd-color-text-secondary);
+}
