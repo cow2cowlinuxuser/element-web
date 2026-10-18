@@ -1,8 +1,15 @@
 # Element // Pioneer 2 Comm-Link (PSOBB Edition)
 
-A custom fork of **Element Classic (Web + Electron Desktop)** transformed into a **Phantasy Star Online: Blue Burst (PSOBB) Episode I, II & IV** communication suite, 3D social hub, and transparent gaming overlay for Matrix + LiveKit (`Element Call`).
+A custom fork of **Element Classic (Web + Electron Desktop)** transformed into a  re-imagined chat stylized after **Phantasy Star Online: Blue Burst (PSOBB) Episode I, II & IV** communication suite, 3D social hub, and transparent gaming overlay for Matrix + LiveKit (`Element Call`).
 
 ---
+## Note about the in game functionality ##
+This is an incomplete re-implementation of PSOBB, it is not ready for prime time and will not be for a long time. Assume that there will be frequent updates until the game is not only integrated into our element-chat-classic version, but it is stable. So far the game does not crash nor does it cause any substantial performance cost to run this. 
+
+## Legal notice for use of copyright assets ##
+This project does not contain, distribute, or link to any proprietary game assets, executables, or data files from Phantasy Star Online Blue Burst (PSOBB) or related titles. All trademarks, copyrights, and intellectual property associated with PSOBB belong entirely to SEGA Corporation.
+
+Users are required to provide their own legally acquired assets to use with this software. This project is an independent tool and is not affiliated with, endorsed by, or sponsored by SEGA. Users are solely responsible for ensuring their compliance with applicable copyright laws and terms of service when sourcing and utilizing game files.
 
 ## What Makes This Fork Different from Standard Element
 
