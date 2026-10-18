@@ -125,7 +125,7 @@ const config: Omit<Writable<Configuration>, "electronFuses"> & {
         resetAdHocDarwinSignature: !process.env.APPLE_TEAM_ID,
 
         loadBrowserProcessSpecificV8Snapshot: false,
-        enableEmbeddedAsarIntegrityValidation: true,
+        enableEmbeddedAsarIntegrityValidation: false,
     },
     files: ["package.json", "lib/**"],
     extraResources: ["build/icon.*", "webapp.asar"],

@@ -34,7 +34,8 @@
         "test:playwright:screenshots": "nx test:playwright:screenshots --",
         "coverage": "pnpm test --coverage",
         "coverage:diff": "diff-cover --config-file ../../diff-cover.toml coverage/lcov.info",
-        "analyse:webpack-bundles": "webpack-bundle-analyzer webpack-stats.json webapp"
+        "analyse:webpack-bundles": "webpack-bundle-analyzer webpack-stats.json webapp",
+        "extract:psobb": "node ../../scripts/extract-psobb-assets.mjs"
     },
     "dependencies": {
         "@babel/runtime": "^7.12.5",

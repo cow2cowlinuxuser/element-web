@@ -39,6 +39,11 @@ export function getUnsentMessages(room: Room, threadId?: string): MatrixEvent[] 
         if (ev.status !== EventStatus.NOT_SENT) {
             return false;
         }
+        const evType = ev.getType() || "";
+        const wireType = ev.getWireType() || "";
+        if (evType.startsWith("io.pso.") || wireType.startsWith("io.pso.")) {
+            return false;
+        }
         if (threadId && threadId !== ev.threadRootId) {
             return false;
         }

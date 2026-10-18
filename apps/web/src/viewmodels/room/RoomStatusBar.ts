@@ -62,7 +62,13 @@ export class RoomStatusBarViewModel
         room: Room,
         hasClickedTermsAndConditions: boolean,
     ): RoomStatusBarViewSnapshot => {
-        const unsentMessages = room.getPendingEvents().filter((ev) => ev.status === EventStatus.NOT_SENT);
+        const unsentMessages = room.getPendingEvents().filter((ev) => {
+            if (ev.status !== EventStatus.NOT_SENT) return false;
+            const evType = ev.getType() || "";
+            const wireType = ev.getWireType() || "";
+            if (evType.startsWith("io.pso.") || wireType.startsWith("io.pso.")) return false;
+            return true;
+        });
         if (unsentMessages.length === 0) {
             return {
                 state: null,

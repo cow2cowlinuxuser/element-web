@@ -21,13 +21,15 @@ import {
     session,
     protocol,
     desktopCapturer,
+    screen,
+    globalShortcut,
 } from "electron";
 import * as Sentry from "@sentry/electron/main";
 import path from "node:path";
 import windowStateKeeper from "electron-window-state";
 import { URL, fileURLToPath } from "node:url";
 
-import "./ipc.js";
+import { getValidRestoreBounds, setPsoWindowBounds } from "./ipc.js";
 import "./seshat.js";
 import "./settings.js";
 import "./badge.js";
@@ -239,29 +241,60 @@ app.on("ready", async () => {
         store,
     });
 
-    // Load the previous window state with fallback to defaults
+    // Load the previous window state with fallback to defaults.
+    // On Windows with frameless transparent windows, disable native maximize/fullScreen in windowStateKeeper
+    // so electron-window-state does not call win.maximize() while the window is still hidden (which corrupts
+    // Win32 restore bounds to 29x38 and breaks DWM alpha transparency).
     const mainWindowState = windowStateKeeper({
-        defaultWidth: 1024,
-        defaultHeight: 768,
+        defaultWidth: 1160,
+        defaultHeight: 760,
+        maximize: process.platform !== "win32",
+        fullScreen: process.platform !== "win32",
     });
+
+    const primaryWorkArea = screen.getPrimaryDisplay().workArea;
+    const safeWidth =
+        mainWindowState.width && mainWindowState.width >= 720
+            ? Math.min(mainWindowState.width, primaryWorkArea.width)
+            : 1160;
+    const safeHeight =
+        mainWindowState.height && mainWindowState.height >= 520
+            ? Math.min(mainWindowState.height, primaryWorkArea.height)
+            : 760;
+    const safeX =
+        typeof mainWindowState.x === "number"
+            ? Math.max(primaryWorkArea.x, Math.min(mainWindowState.x, primaryWorkArea.x + primaryWorkArea.width - 320))
+            : Math.round(primaryWorkArea.x + (primaryWorkArea.width - safeWidth) / 2);
+    const safeY =
+        typeof mainWindowState.y === "number"
+            ? Math.max(primaryWorkArea.y, Math.min(mainWindowState.y, primaryWorkArea.y + primaryWorkArea.height - 240))
+            : Math.round(primaryWorkArea.y + (primaryWorkArea.height - safeHeight) / 2);
 
     console.debug("Opening main window");
     const preloadScript = path.normalize(`${__dirname}/preload.cjs`);
     global.mainWindow = new BrowserWindow({
-        // https://www.electronjs.org/docs/faq#the-font-looks-blurry-what-is-this-and-what-can-i-do
-        backgroundColor: "#fff",
+        backgroundColor: "#00000000",
+        transparent: true,
+        frame: process.platform === "darwin",
+        hasShadow: false,
+        minWidth: 500,
+        minHeight: 360,
 
-        titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
-        trafficLightPosition: { x: 12, y: 8 },
+        ...(process.platform === "darwin"
+            ? {
+                  titleBarStyle: "hidden" as const,
+                  trafficLightPosition: { x: 12, y: 8 },
+              }
+            : {}),
 
         icon: await getIconPath(),
         show: false,
         autoHideMenuBar: store.get("autoHideMenuBar"),
 
-        x: mainWindowState.x,
-        y: mainWindowState.y,
-        width: mainWindowState.width,
-        height: mainWindowState.height,
+        x: safeX,
+        y: safeY,
+        width: safeWidth,
+        height: safeHeight,
         webPreferences: {
             preload: preloadScript,
             nodeIntegration: false,
@@ -301,6 +334,56 @@ app.on("ready", async () => {
     global.mainWindow.once("ready-to-show", () => {
         if (!global.mainWindow) return;
         mainWindowState.manage(global.mainWindow);
+
+        // On Windows, native maximize / native fullscreen disables DWM per-pixel alpha transparency
+        // on frameless transparent BrowserWindows. Ensure valid restore bounds and convert native maximize
+        // or fullscreen to workArea / borderless bounds so OS Transparent works seamlessly.
+        if (process.platform === "win32") {
+            const winExt = global.mainWindow as unknown as {
+                _psoPreMaxBounds?: Electron.Rectangle;
+                _psoSnapZone?: string | null;
+            };
+            const initialBounds = { x: safeX, y: safeY, width: safeWidth, height: safeHeight };
+            const initDisplay = screen.getDisplayMatching(initialBounds);
+            winExt._psoPreMaxBounds = getValidRestoreBounds(initialBounds, initDisplay.workArea);
+
+            if (global.mainWindow.isFullScreen()) {
+                global.mainWindow.setFullScreen(false);
+            }
+            if (global.mainWindow.isMaximized() || mainWindowState.isMaximized) {
+                if (global.mainWindow.isMaximized()) {
+                    global.mainWindow.unmaximize();
+                }
+                winExt._psoSnapZone = "maximize";
+                setPsoWindowBounds(global.mainWindow, initDisplay.workArea);
+            } else {
+                setPsoWindowBounds(global.mainWindow, initialBounds);
+            }
+            global.mainWindow.on("maximize", () => {
+                if (!global.mainWindow) return;
+                const display = screen.getDisplayMatching(global.mainWindow.getBounds());
+                if (!winExt._psoPreMaxBounds || winExt._psoPreMaxBounds.width < 720) {
+                    winExt._psoPreMaxBounds = getValidRestoreBounds(undefined, display.workArea);
+                }
+                winExt._psoSnapZone = "maximize";
+                global.mainWindow.unmaximize();
+                setPsoWindowBounds(global.mainWindow, display.workArea);
+            });
+            global.mainWindow.on("enter-full-screen", () => {
+                if (!global.mainWindow) return;
+                const display = screen.getDisplayMatching(global.mainWindow.getBounds());
+                if (!winExt._psoPreMaxBounds || winExt._psoPreMaxBounds.width < 720) {
+                    winExt._psoPreMaxBounds = getValidRestoreBounds(undefined, display.workArea);
+                }
+                global.mainWindow.setFullScreen(false);
+                setPsoWindowBounds(global.mainWindow, {
+                    x: display.bounds.x,
+                    y: display.bounds.y,
+                    width: display.bounds.width,
+                    height: display.bounds.height - 1,
+                });
+            });
+        }
 
         if (!args.hidden) {
             global.mainWindow.show();
@@ -394,6 +477,29 @@ app.on("ready", async () => {
     ); // Use Mac OS 15+ native picker
 
     setupMediaAuth(global.mainWindow);
+
+    // Register global PSO HUD overlay shortcuts so they work even when a background window/game has OS focus
+    try {
+        globalShortcut.register("Alt+G", () => {
+            global.mainWindow?.webContents.send("psoHudEvent", { type: "toggleClickThrough" });
+        });
+        globalShortcut.register("Alt+C", () => {
+            global.mainWindow?.webContents.send("psoHudEvent", { type: "toggleCompactChat" });
+        });
+        globalShortcut.register("Alt+O", () => {
+            global.mainWindow?.webContents.send("psoHudEvent", { type: "toggleStreamOverlay" });
+        });
+        globalShortcut.register("Alt+0", () => {
+            global.mainWindow?.focus();
+            global.mainWindow?.webContents.send("psoHudEvent", { type: "toggleQuickReply" });
+        });
+    } catch (e) {
+        console.warn("Failed to register PSO global shortcuts:", e);
+    }
+});
+
+app.on("will-quit", () => {
+    globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", () => {

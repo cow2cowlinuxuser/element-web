@@ -226,6 +226,30 @@ export function UserVoiceDock({ isMinimized = false }: Props): JSX.Element {
                     </div>
                 </div>
             )}
+            <div className="mx_UserVoiceDock_psoStatusRow" aria-hidden="true">
+                <div className="mx_UserVoiceDock_psoLvBox">
+                    <span className="mx_UserVoiceDock_psoLvLabel">
+                        <small>Lv</small>98
+                    </span>
+                    <span className="mx_UserVoiceDock_psoSectionBadge" />
+                </div>
+                <div className="mx_UserVoiceDock_psoBars">
+                    <div className="mx_UserVoiceDock_psoBarMeta">
+                        <span className="mx_UserVoiceDock_psoBarTag">HP</span>
+                        <span className="mx_UserVoiceDock_psoBarNum">1345/1345</span>
+                        <span className="mx_UserVoiceDock_psoBarTag">TP</span>
+                        <span className="mx_UserVoiceDock_psoBarNum">2698/2927</span>
+                    </div>
+                    <div className="mx_UserVoiceDock_psoDualTrack">
+                        <div className="mx_UserVoiceDock_psoTrack">
+                            <div className="mx_UserVoiceDock_psoFillHp" />
+                        </div>
+                        <div className="mx_UserVoiceDock_psoTrack">
+                            <div className="mx_UserVoiceDock_psoFillTp" />
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div className="mx_UserVoiceDock_profileBar" data-testid="user-voice-dock-profile">
                 <button
                     type="button"

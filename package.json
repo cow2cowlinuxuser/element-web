@@ -27,7 +27,8 @@
         "docs:build": "vitepress build docs",
         "docs:preview": "vitepress preview docs",
         "test:unit": "nx run-many -t test:unit:prepare -p && vitest run",
-        "coverage:diff": "diff-cover --config-file diff-cover.toml apps/web/coverage/lcov.info packages/shared-components/coverage/lcov.info coverage/lcov.info"
+        "coverage:diff": "diff-cover --config-file diff-cover.toml apps/web/coverage/lcov.info packages/shared-components/coverage/lcov.info coverage/lcov.info",
+        "extract:psobb": "node scripts/extract-psobb-assets.mjs"
     },
     "devDependencies": {
         "@action-validator/cli": "^0.6.0",

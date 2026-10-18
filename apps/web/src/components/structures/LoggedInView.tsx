@@ -58,6 +58,7 @@ import { KeyBindingAction } from "../../accessibility/KeyboardShortcuts";
 import { type SwitchSpacePayload } from "../../dispatcher/payloads/SwitchSpacePayload";
 import LeftPanelLiveShareWarning from "../views/beacon/LeftPanelLiveShareWarning";
 import HomePage from "./HomePage";
+import { PsoHudOverlay } from "../views/pso/PsoHudOverlay";
 import { PipContainer } from "./PipContainer";
 import { monitorSyncedPushRules } from "../../utils/pushRules/monitorSyncedPushRules";
 import { MatrixClientContextProvider } from "./MatrixClientContextProvider";
@@ -739,6 +740,7 @@ class LoggedInView extends React.Component<IProps, IState> {
                     aria-hidden={this.props.hideToSRUsers}
                 >
                     <ToastContainer />
+                    <PsoHudOverlay />
                     <div className={bodyClasses}>{content}</div>
                 </div>
                 <PipContainer />

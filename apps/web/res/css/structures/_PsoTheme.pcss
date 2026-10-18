@@ -1,0 +1,2738 @@
+/*
+Copyright 2026 Element Creations Ltd.
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+:root {
+    --pso-fg-cyan-ice: #dcf7f5;
+    --pso-fg-cyan-bright: #8ae3dd;
+    --pso-fg-cyan-main: #58cfc9;
+    --pso-fg-cyan-mid: #389794;
+    --pso-fg-cyan-deep: #155354;
+    --pso-glass-alpha: 0.48;
+    --pso-scanline-alpha: 0.24;
+    --pso-amber-bright: #f2ce8a;
+    --pso-amber-main: #d99438;
+    --pso-amber-border: #efc278;
+    --pso-orange-tab-top: #f0ab48;
+    --pso-orange-tab-mid: #d67618;
+    --pso-orange-tab-bot: #8c3e05;
+    --pso-hp-green: #50d282;
+    --pso-tp-cyan: #58cfc9;
+    --pso-danger-red: #e05555;
+}
+
+/* Force PSO high-contrast phosphor text & dark tokens even if OS defaults to light theme */
+body.pso-hud-theme {
+    --cpd-color-text-primary: #ebf6f6;
+    --cpd-color-text-secondary: #a8d4d2;
+    --cpd-color-icon-primary: #dcf7f5;
+    --cpd-color-icon-secondary: #8ae3dd;
+    --cpd-color-icon-tertiary: #58cfc9;
+    --cpd-color-bg-canvas-default: transparent;
+    --cpd-color-bg-subtle-primary: rgb(9, 44, 52, 0.42);
+    --cpd-color-bg-subtle-secondary: rgb(12, 52, 62, 0.45);
+    --cpd-color-bg-action-primary-rest: #d99438;
+    --cpd-color-bg-accent-rest: #efc278;
+    color: #ebf6f6;
+    background-color: #030b14;
+}
+
+html:has(body.pso-transparent-desktop),
+body.pso-transparent-desktop,
+body.pso-transparent-desktop #matrixchat,
+body.pso-transparent-desktop .mx_MatrixChat_wrapper {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+/* Disable Chromium backdrop-filter in OS Transparent mode so per-pixel alpha passes cleanly to Windows DWM */
+body.pso-transparent-desktop .mx_LeftPanel_roomListContainer,
+body.pso-transparent-desktop .mx_SpacePanel,
+body.pso-transparent-desktop .mx_RoomView_wrapper,
+body.pso-transparent-desktop .mx_RightPanel,
+body.pso-transparent-desktop .mx_BaseCard,
+body.pso-transparent-desktop #mx_PersistedElement_container,
+body.pso-transparent-desktop [data-element-call-root],
+body.pso-transparent-desktop .pso-hex-quickbar {
+    backdrop-filter: none !important;
+}
+
+/* ============================================================================
+ * 1. PSO SCENE BACKDROP (Pioneer 2 Orbital Observation Deck / Custom Wallpaper)
+ * ============================================================================ */
+.pso-hud-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 600;
+    pointer-events: none;
+}
+
+.pso-interactive {
+    pointer-events: auto;
+}
+
+/* Windows Aero Snap Preview Box when dragging titlebar to top/left/right/corners */
+.pso-snap-preview-box {
+    position: fixed;
+    z-index: 590;
+    border: 2px solid var(--pso-fg-cyan-bright);
+    border-radius: 8px;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.06) 0px,
+            rgb(138, 227, 221, 0.06) 1px,
+            rgb(0, 8, 14, 0.22) 1px,
+            rgb(0, 8, 14, 0.22) 3px
+        ),
+        radial-gradient(circle at 50% 50%, rgb(88, 207, 201, 0.22) 0%, rgb(12, 54, 62, 0.36) 100%);
+    box-shadow:
+        0 0 24px rgb(88, 207, 201, 0.55),
+        inset 0 0 20px rgb(88, 207, 201, 0.28);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transition: all 0.12s ease;
+}
+
+.pso-snap-preview-box--maximize {
+    inset: 32px 8px 8px 8px;
+}
+
+.pso-snap-preview-box--left {
+    top: 32px;
+    bottom: 8px;
+    left: 8px;
+    width: calc(50vw - 12px);
+}
+
+.pso-snap-preview-box--right {
+    top: 32px;
+    bottom: 8px;
+    right: 8px;
+    width: calc(50vw - 12px);
+}
+
+.pso-snap-preview-box--top-left {
+    top: 32px;
+    left: 8px;
+    width: calc(50vw - 12px);
+    height: calc(50vh - 24px);
+}
+
+.pso-snap-preview-box--bottom-left {
+    bottom: 8px;
+    left: 8px;
+    width: calc(50vw - 12px);
+    height: calc(50vh - 24px);
+}
+
+.pso-snap-preview-box--top-right {
+    top: 32px;
+    right: 8px;
+    width: calc(50vw - 12px);
+    height: calc(50vh - 24px);
+}
+
+.pso-snap-preview-box--bottom-right {
+    bottom: 8px;
+    right: 8px;
+    width: calc(50vw - 12px);
+    height: calc(50vh - 24px);
+}
+
+.pso-snap-preview-label {
+    padding: 6px 16px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--pso-orange-tab-top) 0%, var(--pso-orange-tab-bot) 100%);
+    border: 1.5px solid #f5d293;
+    color: #fff9ec;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-shadow: 0 1px 2px #000000;
+    box-shadow: 0 4px 16px rgb(0, 0, 0, 0.75);
+}
+
+/* Frameless Window Drag Bar & Resize Edges */
+.pso-window-titlebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    z-index: 610;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px 0 12px;
+    background: linear-gradient(180deg, rgb(12, 54, 62, 0.88) 0%, rgb(4, 20, 26, 0.92) 100%);
+    border-bottom: 1px solid rgb(88, 207, 201, 0.45);
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+}
+
+.pso-window-titlebar:active {
+    cursor: grabbing;
+}
+
+.pso-window-titlebar-badge {
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--pso-fg-cyan-bright);
+    background: rgb(14, 64, 74, 0.85);
+    color: var(--pso-fg-cyan-ice);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+}
+
+.pso-window-titlebar-badge--active {
+    border-color: var(--pso-amber-border);
+    background: linear-gradient(90deg, rgb(209, 137, 36, 0.85) 0%, rgb(176, 98, 18, 0.85) 100%);
+    color: #fff8e6;
+    cursor: pointer;
+}
+
+.pso-window-ctrl-btn--active {
+    border-color: var(--pso-amber-border) !important;
+    background: rgb(209, 137, 36, 0.72) !important;
+    color: #fff8e6 !important;
+}
+
+.pso-window-titlebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pso-window-titlebar-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #a8f5f1 0%, #58cfc9 55%, #165e62 100%);
+    box-shadow: 0 0 6px rgb(88, 207, 201, 0.85);
+}
+
+.pso-window-titlebar-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: var(--pso-fg-cyan-ice);
+    text-shadow: 0 1px 2px #000000;
+}
+
+.pso-window-titlebar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    -webkit-app-region: no-drag;
+}
+
+.pso-window-ctrl-btn {
+    width: 26px;
+    height: 20px;
+    border-radius: 3px;
+    border: 1px solid rgb(88, 207, 201, 0.35);
+    background: rgb(8, 34, 42, 0.72);
+    color: var(--pso-fg-cyan-ice);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+}
+
+.pso-window-ctrl-btn:hover {
+    border-color: var(--pso-amber-border);
+    background: rgb(209, 137, 36, 0.48);
+    color: #ffffff;
+}
+
+.pso-window-ctrl-btn--close:hover {
+    border-color: #ff9494;
+    background: rgb(214, 54, 54, 0.78);
+    color: #ffffff;
+}
+
+.pso-window-resize-edge {
+    position: fixed;
+    z-index: 55;
+    -webkit-app-region: no-drag;
+}
+
+.pso-window-resize-edge--n {
+    top: 0;
+    left: 8px;
+    right: 8px;
+    height: 4px;
+    cursor: ns-resize;
+}
+
+.pso-window-resize-edge--s {
+    bottom: 0;
+    left: 8px;
+    right: 8px;
+    height: 5px;
+    cursor: ns-resize;
+}
+
+.pso-window-resize-edge--e {
+    top: 8px;
+    bottom: 8px;
+    right: 0;
+    width: 5px;
+    cursor: ew-resize;
+}
+
+.pso-window-resize-edge--w {
+    top: 8px;
+    bottom: 8px;
+    left: 0;
+    width: 5px;
+    cursor: ew-resize;
+}
+
+.pso-window-resize-edge--nw {
+    top: 0;
+    left: 0;
+    width: 10px;
+    height: 10px;
+    cursor: nwse-resize;
+}
+
+.pso-window-resize-edge--ne {
+    top: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    cursor: nesw-resize;
+}
+
+.pso-window-resize-edge--sw {
+    bottom: 0;
+    left: 0;
+    width: 10px;
+    height: 10px;
+    cursor: nesw-resize;
+}
+
+.pso-window-resize-edge--se {
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    cursor: nwse-resize;
+}
+
+.pso-scene-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 60% 42%, rgb(24, 98, 104, 0.36) 0%, rgb(7, 28, 38, 0.86) 58%, #020810 100%);
+}
+
+.pso-custom-wallpaper {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.pso-ragol-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.pso-left-cyan-aura {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 380px;
+    background: linear-gradient(
+        90deg,
+        rgb(56, 151, 148, 0.24) 0%,
+        rgb(88, 207, 201, 0.08) 65%,
+        transparent 100%
+    );
+    pointer-events: none;
+}
+
+/* ============================================================================
+ * 2. FLOATING HUD WINDOWS & TRANSLUCENT SCANLINE GLASS
+ * ============================================================================ */
+.mx_MatrixChat_wrapper {
+    position: relative;
+    z-index: 1;
+    background: transparent !important;
+}
+
+.mx_MatrixChat {
+    position: relative;
+    z-index: 2;
+    padding: 36px 14px 66px 14px !important;
+    gap: 12px;
+    box-sizing: border-box;
+    background: transparent !important;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Hide main 3-column panels when Stream Overlay Mode is active */
+body.pso-stream-overlay-mode .mx_MatrixChat {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(8px) scale(0.99);
+}
+
+/* Left Panel: Updated Blue Burst Chamfered Sea-Cyan Wireframe */
+.mx_LeftPanel_outerWrapper {
+    background: transparent !important;
+    height: 100%;
+}
+
+.mx_LeftPanel_wrapper,
+.mx_LeftPanel_wrapper--user,
+.mx_LeftPanel {
+    background: transparent !important;
+    height: 100%;
+}
+
+.mx_LeftPanel .mx_LeftPanel_roomListContainer {
+    position: relative;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.04) 0px,
+            rgb(138, 227, 221, 0.04) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 3px
+        ),
+        linear-gradient(
+            180deg,
+            rgb(11, 58, 66, var(--pso-glass-alpha)) 0%,
+            rgb(5, 24, 30, calc(var(--pso-glass-alpha) + 0.14)) 100%
+        ) !important;
+    backdrop-filter: blur(2.5px) saturate(118%);
+    border: 1.5px solid var(--pso-fg-cyan-main) !important;
+    border-radius: 6px;
+    box-shadow:
+        0 0 0 1px rgb(4, 20, 24, 0.92),
+        0 0 18px rgb(88, 207, 201, 0.22),
+        inset 0 0 16px rgb(88, 207, 201, 0.14),
+        0 12px 30px rgb(0, 0, 0, 0.65);
+    overflow: hidden;
+}
+
+.mx_RoomListPanel {
+    background: transparent !important;
+}
+
+/* SpaceHeaderBar & SpacePanel: Wireframe slots + Unified Classic PSO Amber Selection */
+.mx_SpaceHeaderBar {
+    background: linear-gradient(180deg, rgb(16, 68, 76, 0.62) 0%, rgb(7, 30, 36, 0.72) 100%) !important;
+    border-bottom: 1px solid rgb(88, 207, 201, 0.42) !important;
+}
+
+.mx_SpaceHeaderBar_item {
+    border: 1px solid rgb(88, 207, 201, 0.32) !important;
+    background: rgb(10, 38, 46, 0.55) !important;
+    color: var(--pso-fg-cyan-ice) !important;
+    transition: all 0.14s ease;
+}
+
+.mx_SpaceHeaderBar_item:hover {
+    border-color: var(--pso-amber-border) !important;
+    background: linear-gradient(
+        90deg,
+        rgb(209, 137, 36, 0.38) 0%,
+        rgb(227, 165, 58, 0.26) 100%
+    ) !important;
+}
+
+.mx_SpaceHeaderBar_item.mx_SpaceHeaderBar_item_selected {
+    background: linear-gradient(
+        90deg,
+        rgb(209, 137, 36, 0.72) 0%,
+        rgb(227, 165, 58, 0.56) 50%,
+        rgb(191, 114, 24, 0.42) 100%
+    ) !important;
+    border-color: var(--pso-amber-border) !important;
+    box-shadow:
+        0 0 12px rgb(217, 148, 56, 0.45),
+        inset 0 0 8px rgb(242, 206, 138, 0.3) !important;
+    color: #fff8e6 !important;
+}
+
+.mx_SpacePanel {
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.03) 0px,
+            rgb(138, 227, 221, 0.03) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 3px
+        ),
+        linear-gradient(
+            180deg,
+            rgb(11, 56, 64, var(--pso-glass-alpha)) 0%,
+            rgb(5, 22, 28, calc(var(--pso-glass-alpha) + 0.14)) 100%
+        ) !important;
+    backdrop-filter: blur(7px);
+    border: 1.5px solid var(--pso-fg-cyan-main) !important;
+    border-radius: 6px;
+    margin-right: 6px;
+}
+
+/* ============================================================================
+ * 3. USER VOICE DOCK + PSO HUNTER STATUS HUD (Lv98 + HP/TP Bars)
+ * ============================================================================ */
+.mx_UserVoiceDock {
+    background: linear-gradient(
+        180deg,
+        rgb(14, 52, 62, 0.78) 0%,
+        rgb(6, 22, 30, 0.88) 100%
+    ) !important;
+    border-top: 1.5px solid var(--pso-fg-cyan-main) !important;
+    box-shadow: inset 0 1px 0 rgb(178, 240, 236, 0.28);
+}
+
+.mx_UserVoiceDock_psoStatusRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px 4px 10px;
+    border-bottom: 1px solid rgb(88, 207, 201, 0.25);
+    background: linear-gradient(90deg, rgb(18, 68, 76, 0.55) 0%, rgb(8, 28, 36, 0.35) 100%);
+}
+
+.mx_UserVoiceDock_minimized .mx_UserVoiceDock_psoStatusRow {
+    display: none;
+}
+
+.mx_UserVoiceDock_psoLvBox {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.mx_UserVoiceDock_psoLvLabel {
+    font-weight: 800;
+    font-size: 13px;
+    color: #ffffff;
+    letter-spacing: 0.04em;
+    text-shadow: 0 0 6px rgb(88, 207, 201, 0.7);
+}
+
+.mx_UserVoiceDock_psoLvLabel small {
+    color: var(--pso-amber-bright);
+    font-size: 10px;
+    margin-right: 1px;
+}
+
+.mx_UserVoiceDock_psoSectionBadge {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ff8a8a 0%, #e03232 55%, #6e0808 100%);
+    border: 1px solid #ffd0d0;
+    box-shadow: 0 0 6px rgb(224, 50, 50, 0.8);
+}
+
+.mx_UserVoiceDock_psoBars {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.mx_UserVoiceDock_psoBarMeta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.mx_UserVoiceDock_psoBarTag {
+    color: var(--pso-amber-bright);
+    letter-spacing: 0.05em;
+}
+
+.mx_UserVoiceDock_psoBarNum {
+    color: var(--pso-fg-cyan-ice);
+    font-variant-numeric: tabular-nums;
+}
+
+.mx_UserVoiceDock_psoDualTrack {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.mx_UserVoiceDock_psoTrack {
+    height: 5px;
+    border-radius: 3px;
+    background: rgb(2, 10, 16, 0.85);
+    border: 1px solid rgb(138, 227, 221, 0.42);
+    overflow: hidden;
+}
+
+.mx_UserVoiceDock_psoFillHp {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, #2ca85a 0%, #50d282 60%, #a8f5c2 100%);
+    box-shadow: 0 0 6px rgb(80, 210, 130, 0.75);
+}
+
+.mx_UserVoiceDock_psoFillTp {
+    width: 92%;
+    height: 100%;
+    background: linear-gradient(90deg, #268a94 0%, #58cfc9 60%, #b8f5f1 100%);
+    box-shadow: 0 0 6px rgb(88, 207, 201, 0.75);
+}
+
+/* ============================================================================
+ * 4. MAIN ROOM VIEW & RIGHT PANEL: CLASSIC PSO DOUBLE-BEZEL + ORANGE PILL TABS
+ * ============================================================================ */
+.mx_RoomView_wrapper {
+    position: relative;
+    height: 100%;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.035) 0px,
+            rgb(138, 227, 221, 0.035) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 3px
+        ),
+        linear-gradient(
+            180deg,
+            rgb(9, 54, 62, var(--pso-glass-alpha)) 0%,
+            rgb(4, 22, 28, calc(var(--pso-glass-alpha) + 0.14)) 100%
+        ) !important;
+    backdrop-filter: blur(2.5px) saturate(118%);
+    border-radius: 7px;
+    border: 2px solid #09151c;
+    box-shadow:
+        inset 0 0 0 1.5px var(--pso-fg-cyan-main),
+        inset 0 0 18px rgb(88, 207, 201, 0.14),
+        0 12px 32px rgb(0, 0, 0, 0.65);
+    overflow: hidden;
+}
+
+.mx_RoomView,
+.mx_MainSplit,
+.mx_RoomView_body,
+.mx_RoomView_timeline,
+.mx_ScrollPanel,
+.mx_RoomView_messagePanel,
+.mx_HomePage,
+.mx_HomePage_default {
+    background: transparent !important;
+}
+
+/* RoomHeader: PSO Orange Laser Streak & Glossy Pill Cap */
+.mx_RoomHeader {
+    position: relative;
+    background: linear-gradient(
+        180deg,
+        rgb(14, 64, 72, 0.76) 0%,
+        rgb(7, 30, 38, 0.84) 100%
+    ) !important;
+    border-bottom: 1.5px solid var(--pso-fg-cyan-main) !important;
+    box-shadow:
+        0 2px 12px rgb(0, 0, 0, 0.45),
+        inset 0 1px 0 rgb(178, 240, 236, 0.32);
+}
+
+.mx_RoomHeader::after {
+    content: "";
+    position: absolute;
+    left: 16px;
+    right: 25%;
+    bottom: -2px;
+    height: 2px;
+    background: linear-gradient(
+        90deg,
+        #f2ce8a 0%,
+        #d99438 45%,
+        rgb(88, 207, 201, 0.6) 85%,
+        transparent 100%
+    );
+    box-shadow: 0 0 8px rgb(217, 148, 56, 0.75);
+    pointer-events: none;
+}
+
+/* Message Composer: PSO Command Input Frame */
+.mx_MessageComposer {
+    margin: 6px 12px 10px 12px;
+    background: linear-gradient(
+        180deg,
+        rgb(8, 36, 44, 0.78) 0%,
+        rgb(4, 18, 24, 0.88) 100%
+    ) !important;
+    border: 1.5px solid var(--pso-fg-cyan-main) !important;
+    border-radius: 6px;
+    box-shadow:
+        inset 0 0 12px rgb(88, 207, 201, 0.14),
+        0 4px 14px rgb(0, 0, 0, 0.5);
+}
+
+.mx_MessageComposer_wrapper {
+    background: transparent !important;
+}
+
+/* Right Panel / BaseCard / Threads Popout / Contextual Menus: High-Opacity PSO Dark-Teal Glass */
+.mx_RightPanel,
+.mx_BaseCard {
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.035) 0px,
+            rgb(138, 227, 221, 0.035) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 3px
+        ),
+        linear-gradient(
+            180deg,
+            rgb(10, 48, 56, 0.93) 0%,
+            rgb(4, 20, 26, 0.96) 100%
+        ) !important;
+    backdrop-filter: blur(12px);
+    border-left: 1.5px solid var(--pso-fg-cyan-main) !important;
+}
+
+/* Fix Transparent Threads Activity Centre, Popovers, Dialogs & Context Menus (So text never bleeds into the chat behind it) */
+.mx_ContextualMenu,
+.mx_ThreadsActivityCentre_popout,
+.mx_ThreadsActivityCentre,
+.mx_ThreadPanel,
+.mx_ThreadView,
+.mx_GenericDropdownMenu_Menu,
+.mx_Autocomplete,
+.mx_EmojiPicker,
+.mx_UserMenu_contextMenu,
+.mx_IconizedContextMenu,
+.mx_Dialog,
+[role="menu"],
+[role="listbox"],
+[data-radix-popper-content-wrapper] > * {
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.04) 0px,
+            rgb(138, 227, 221, 0.04) 1px,
+            rgb(0, 8, 14, 0.25) 1px,
+            rgb(0, 8, 14, 0.25) 3px
+        ),
+        linear-gradient(
+            180deg,
+            rgb(10, 48, 58, 0.96) 0%,
+            rgb(4, 18, 24, 0.98) 100%
+        ) !important;
+    background-color: rgb(6, 28, 36, 0.97) !important;
+    backdrop-filter: blur(14px) saturate(130%) !important;
+    border: 1.5px solid var(--pso-fg-cyan-bright) !important;
+    border-radius: 7px !important;
+    box-shadow:
+        0 14px 36px rgb(0, 0, 0, 0.85),
+        inset 0 0 14px rgb(88, 207, 201, 0.18) !important;
+    color: var(--pso-fg-cyan-ice) !important;
+}
+
+/* Reusable Glossy PSO Orange Corner Pill Tab */
+.pso-orange-pill-tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 14px;
+    border-radius: 999px;
+    background: linear-gradient(
+        180deg,
+        var(--pso-orange-tab-top) 0%,
+        var(--pso-orange-tab-mid) 52%,
+        var(--pso-orange-tab-bot) 100%
+    );
+    border: 1.5px solid #f5d293;
+    box-shadow:
+        0 2px 8px rgb(0, 0, 0, 0.7),
+        inset 0 1px 1px rgb(255, 255, 255, 0.65);
+    color: #fff9ec;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-shadow: 0 1px 2px #000000;
+}
+
+/* ============================================================================
+ * 5. EPISODE IV TOP-LEFT HUNTER STATUS HUD + COMPACT PARTY VOICE STACK
+ * ============================================================================ */
+.pso-ep4-party-hud-stack {
+    position: fixed;
+    top: 36px;
+    left: 16px;
+    z-index: 615;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pso-ep4-top-status {
+    width: 274px;
+    padding: 8px 12px 10px 12px;
+    border-radius: 7px;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.04) 0px,
+            rgb(138, 227, 221, 0.04) 1px,
+            rgb(0, 8, 14, 0.25) 1px,
+            rgb(0, 8, 14, 0.25) 3px
+        ),
+        linear-gradient(180deg, rgb(12, 60, 68, 0.86) 0%, rgb(5, 24, 30, 0.94) 100%);
+    backdrop-filter: blur(8px);
+    border: 2px solid #09151c;
+    box-shadow:
+        inset 0 0 0 1.5px var(--pso-fg-cyan-bright),
+        0 8px 24px rgb(0, 0, 0, 0.72);
+}
+
+.pso-ep4-status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 5px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid rgb(138, 227, 221, 0.35);
+}
+
+.pso-ep4-char-name {
+    font-size: 13px;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: 0.06em;
+    text-shadow:
+        0 1px 2px #000000,
+        0 0 8px rgb(88, 207, 201, 0.65);
+}
+
+.pso-ep4-ab-Cluster {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.pso-orb-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid #e6f7f6;
+    font-size: 11px;
+    font-weight: 900;
+    color: #ffffff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-shadow: 0 1px 2px #000000;
+    box-shadow:
+        0 2px 5px rgb(0, 0, 0, 0.65),
+        inset 0 1px 2px rgb(255, 255, 255, 0.65);
+}
+
+.pso-orb-btn--a {
+    background: radial-gradient(circle at 35% 30%, #7bf2a8 0%, #29a358 60%, #104f28 100%);
+}
+
+.pso-orb-btn--b {
+    background: radial-gradient(circle at 35% 30%, #ff9494 0%, #d63636 60%, #631010 100%);
+}
+
+.pso-ep4-status-body {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pso-ep4-avatar-ring {
+    position: relative;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 2.5px solid rgb(88, 207, 201, 0.55);
+    background: rgb(4, 18, 24, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.14s ease;
+}
+
+.pso-ep4-avatar-ring--speaking {
+    border-color: #42f57b;
+    box-shadow:
+        0 0 12px rgb(66, 245, 123, 0.85),
+        inset 0 0 6px rgb(66, 245, 123, 0.5);
+}
+
+.pso-ep4-avatar-ring--muted {
+    border-color: #e05555;
+    opacity: 0.78;
+}
+
+.pso-ep4-avatar-hex-svg {
+    position: absolute;
+    inset: 2px;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+}
+
+.pso-ep4-avatar-img {
+    position: relative;
+    z-index: 1;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.pso-ep4-avatar-initial {
+    position: relative;
+    z-index: 1;
+    font-size: 14px;
+    font-weight: 900;
+    color: #ffffff;
+    text-shadow: 0 1px 2px #000000;
+}
+
+.pso-ep4-bars-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.pso-ep4-bar-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.pso-ep4-bar-label {
+    color: var(--pso-amber-bright);
+}
+
+.pso-ep4-bar-val {
+    color: #ffffff;
+    font-variant-numeric: tabular-nums;
+}
+
+.pso-ep4-bar-track {
+    height: 6px;
+    border-radius: 3px;
+    background: rgb(2, 10, 16, 0.9);
+    border: 1px solid rgb(138, 227, 221, 0.55);
+    overflow: hidden;
+    margin-bottom: 2px;
+}
+
+.pso-ep4-bar-fill {
+    height: 100%;
+    transition: width 0.14s ease;
+}
+
+.pso-ep4-bar-fill--hp {
+    background: linear-gradient(90deg, #279e54 0%, #50d282 65%, #b8f7ce 100%);
+}
+
+.pso-ep4-bar-fill--tp {
+    background: linear-gradient(90deg, #24818a 0%, #58cfc9 65%, #c2f7f4 100%);
+}
+
+.pso-ep4-bar-fill--peaking {
+    background: linear-gradient(90deg, #e03838 0%, #ff6b4a 65%, #ffd29c 100%) !important;
+}
+
+/* Shifta (Red = dB Peaking) & Deband (Blue = Noise Shield) Interlocking Hex Badges */
+.pso-ep4-buff-pair {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.pso-buff-hex {
+    width: 24px;
+    height: 24px;
+    opacity: 0.34;
+    filter: saturate(0.5);
+    transition: all 0.14s ease;
+    cursor: pointer;
+}
+
+.pso-buff-hex svg {
+    width: 100%;
+    height: 100%;
+}
+
+.pso-buff-hex--active {
+    opacity: 1;
+    filter: saturate(1.25) drop-shadow(0 0 6px rgb(88, 207, 201, 0.65));
+}
+
+.pso-buff-hex--shifta.pso-buff-hex--active {
+    filter: saturate(1.4) drop-shadow(0 0 8px rgb(255, 59, 59, 0.92));
+    transform: scale(1.08);
+}
+
+/* Compact Party Member Rows (Dumpling / Guy / Zero / Calvitium style) */
+.pso-party-compact-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pso-party-compact-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 196px;
+    padding: 4px 10px 4px 5px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgb(12, 60, 68, 0.9) 0%, rgb(4, 22, 28, 0.95) 100%);
+    border: 1.8px solid var(--pso-fg-cyan-bright);
+    box-shadow:
+        inset 0 0 0 1px rgb(194, 247, 244, 0.38),
+        0 4px 14px rgb(0, 0, 0, 0.72);
+}
+
+.pso-party-gem-wrap {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 2px solid rgb(88, 207, 201, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.pso-party-gem-wrap--speaking {
+    border-color: #42f57b;
+    box-shadow: 0 0 10px rgb(66, 245, 123, 0.9);
+}
+
+.pso-party-gem-svg {
+    position: absolute;
+    inset: 1px;
+    width: calc(100% - 2px);
+    height: calc(100% - 2px);
+}
+
+.pso-party-gem-avatar {
+    position: relative;
+    z-index: 1;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.pso-party-gem-initial {
+    position: relative;
+    z-index: 1;
+    font-size: 11px;
+    font-weight: 900;
+    color: #ffffff;
+    text-shadow: 0 1px 2px #000000;
+}
+
+.pso-party-slot-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.pso-party-mini-hp-track {
+    height: 5px;
+    border-radius: 3px;
+    background: #041016;
+    border: 1px solid rgb(88, 207, 201, 0.5);
+    overflow: hidden;
+}
+
+.pso-party-mini-hp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #27a34b 0%, #49f276 100%);
+}
+
+.pso-party-name-slot {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #051117;
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 2px #000000;
+}
+
+/* ============================================================================
+ * 6. TRANSIENT SYMBOL CHAT BALLOON & PSO SYMBOL CHAT MAKER MODAL
+ * ============================================================================ */
+.pso-symbol-chat-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 82px;
+    transform: translateX(-50%);
+    z-index: 625;
+    min-width: 240px;
+    max-width: 420px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgb(12, 62, 70, 0.9) 0%, rgb(5, 24, 30, 0.94) 100%);
+    border: 2px solid var(--pso-fg-cyan-bright);
+    box-shadow:
+        0 10px 28px rgb(0, 0, 0, 0.75),
+        0 0 16px rgb(88, 207, 201, 0.35);
+    cursor: pointer;
+}
+
+.pso-symbol-chat-toast--rappy {
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    transform: translateX(-50%) rotate(-2deg);
+}
+
+.pso-symbol-balloon-wrap {
+    width: 276px;
+    height: 158px;
+    user-select: none;
+}
+
+.pso-symbol-balloon-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    filter: drop-shadow(0 8px 20px rgb(0, 0, 0, 0.75));
+}
+
+/* Interactive PSO Symbol Chat Parts Maker Modal */
+.pso-symbol-editor-modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 635;
+    width: min(740px, 95vw);
+    max-width: 95vw;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-radius: 9px;
+    padding: 12px 14px;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.04) 0px,
+            rgb(138, 227, 221, 0.04) 1px,
+            rgb(0, 8, 14, 0.28) 1px,
+            rgb(0, 8, 14, 0.28) 3px
+        ),
+        linear-gradient(180deg, rgb(10, 48, 56, 0.96) 0%, rgb(4, 18, 24, 0.98) 100%);
+    border: 2px solid var(--pso-fg-cyan-bright);
+    box-shadow:
+        0 18px 48px rgb(0, 0, 0, 0.88),
+        inset 0 0 18px rgb(88, 207, 201, 0.22);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.pso-symbol-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgb(88, 207, 201, 0.35);
+}
+
+.pso-symbol-editor-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    color: var(--pso-fg-cyan-ice);
+    white-space: nowrap;
+}
+
+.pso-symbol-preset-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.pso-symbol-preset-tab {
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid rgb(88, 207, 201, 0.38);
+    background: rgb(6, 26, 34, 0.85);
+    color: #9ec8c6;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.pso-symbol-preset-tab--active {
+    border-color: var(--pso-amber-border);
+    background: linear-gradient(90deg, rgb(209, 137, 36, 0.78) 0%, rgb(156, 86, 16, 0.78) 100%);
+    color: #fff9eb;
+}
+
+.pso-symbol-editor-body {
+    display: grid;
+    grid-template-columns: 244px minmax(0, 1fr);
+    gap: 12px;
+}
+
+.pso-parts-list-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 7px;
+    background: rgb(4, 22, 30, 0.9);
+    border: 1.5px solid var(--pso-fg-cyan-main);
+}
+
+.pso-parts-red-header {
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #f2385a 0%, #a8102d 100%);
+    border: 1.5px solid #ff9eb0;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 900;
+    text-align: center;
+    letter-spacing: 0.06em;
+    text-shadow: 0 1px 2px #000000;
+}
+
+.pso-parts-cat-bar {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 3px;
+}
+
+.pso-parts-cat-bar--7 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.pso-symbol-bank-tabs {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.pso-symbol-name-input {
+    width: 138px;
+    padding: 3px 7px;
+    border-radius: 4px;
+    border: 1px solid rgb(88, 207, 201, 0.48);
+    background: rgb(4, 18, 24, 0.9);
+    color: #fff8e6;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.pso-part-tile-btn--dark {
+    background: #060b10 !important;
+    border-color: rgb(88, 207, 201, 0.52) !important;
+}
+
+.pso-sheet-mod-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    padding-top: 2px;
+}
+
+.pso-parts-cat-btn {
+    padding: 3px 2px;
+    border-radius: 3px;
+    border: 1px solid rgb(88, 207, 201, 0.32);
+    background: rgb(8, 34, 42, 0.8);
+    color: #9ec8c6;
+    font-size: 9px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.pso-parts-cat-btn--active {
+    border-color: var(--pso-fg-cyan-bright);
+    background: rgb(24, 96, 108, 0.9);
+    color: #ffffff;
+}
+
+.pso-parts-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    max-height: 224px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.pso-part-tile-btn {
+    height: 46px;
+    border-radius: 4px;
+    border: 1.5px solid rgb(88, 207, 201, 0.35);
+    background: #d8e2e8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.1s ease;
+}
+
+.pso-part-tile-btn:hover {
+    border-color: #ff9429;
+    box-shadow: 0 0 0 2px #ff9429;
+    transform: translateY(-1px);
+}
+
+.pso-symbol-stage-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.pso-symbol-canvas-frame {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: 7px;
+    background: radial-gradient(circle at 50% 50%, rgb(16, 68, 78, 0.55) 0%, rgb(4, 18, 24, 0.85) 100%);
+    border: 1px dashed rgb(88, 207, 201, 0.45);
+    overflow: hidden;
+}
+
+.pso-placed-layers-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    background: rgb(4, 20, 28, 0.9);
+    border: 1px solid rgb(88, 207, 201, 0.38);
+}
+
+.pso-placed-layers-scroll {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 1px 0;
+}
+
+.pso-placed-layer-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid rgb(88, 207, 201, 0.32);
+    background: rgb(8, 34, 42, 0.85);
+    color: #b4dedb;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.pso-placed-layer-chip:hover {
+    border-color: var(--pso-fg-cyan-bright);
+    color: #ffffff;
+}
+
+.pso-placed-layer-chip--active {
+    border-color: #ff9e2c;
+    background: linear-gradient(90deg, rgb(209, 137, 36, 0.82) 0%, rgb(146, 78, 14, 0.85) 100%);
+    color: #ffffff;
+    box-shadow: 0 0 6px rgb(255, 158, 44, 0.5);
+}
+
+.pso-placed-layer-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    border: 1px solid rgb(0, 0, 0, 0.65);
+    flex-shrink: 0;
+}
+
+.pso-symbol-controls-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: rgb(4, 20, 28, 0.92);
+    border: 1.5px solid var(--pso-fg-cyan-main);
+}
+
+.pso-symbol-ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+.pso-key-badge {
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 900;
+    color: #ffffff;
+    border: 1px solid rgb(255, 255, 255, 0.45);
+    cursor: pointer;
+}
+
+.pso-key-badge--cyan {
+    background: #176c78;
+}
+
+.pso-key-badge--yellow {
+    background: #9e7b12;
+}
+
+.pso-key-badge--green {
+    background: #227839;
+}
+
+.pso-key-badge--purple {
+    background: #5b2882;
+}
+
+.pso-key-badge--orange {
+    background: #8f4711;
+}
+
+.pso-key-badge--red {
+    background: #b52424;
+}
+
+.pso-ctrl-label {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--pso-fg-cyan-ice);
+    letter-spacing: 0.04em;
+}
+
+.pso-scale-btns {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+}
+
+.pso-mini-act-btn {
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    background: rgb(10, 42, 52, 0.85);
+    color: var(--pso-fg-cyan-ice);
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.pso-mini-act-btn--danger {
+    border-color: #e05555;
+    color: #ffb3b3;
+}
+
+.pso-color-swatches {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.pso-color-swatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border: 1.5px solid rgb(0, 0, 0, 0.65);
+    cursor: pointer;
+}
+
+.pso-color-swatch--active {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 1.5px #ff9429;
+    transform: scale(1.12);
+}
+
+.pso-symbol-ctrl-footer {
+    padding-top: 2px;
+}
+
+.pso-transmit-symbol-btn {
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 5px;
+    border: 1.5px solid var(--pso-amber-border);
+    background: linear-gradient(90deg, rgb(186, 108, 22, 0.85) 0%, rgb(128, 62, 12, 0.9) 100%);
+    color: #fff9eb;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.pso-transmit-symbol-btn:hover {
+    filter: brightness(1.12);
+}
+
+/* ============================================================================
+ * 6B. EMBEDDED 3D WEBGL PSO PIONEER 2 LOBBY + MINIGAME + RESHADE + .NJ LOADER
+ * ============================================================================ */
+.pso-lobby3d-modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 632;
+    box-sizing: border-box;
+    width: min(820px, 95vw);
+    height: min(540px, 84vh);
+    border-radius: 9px;
+    padding: 8px 10px;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.04) 0px,
+            rgb(138, 227, 221, 0.04) 1px,
+            rgb(0, 8, 14, 0.28) 1px,
+            rgb(0, 8, 14, 0.28) 3px
+        ),
+        linear-gradient(180deg, rgb(8, 42, 50, 0.96) 0%, rgb(3, 14, 20, 0.98) 100%);
+    border: 2px solid var(--pso-fg-cyan-bright);
+    box-shadow:
+        0 20px 54px rgb(0, 0, 0, 0.88),
+        inset 0 0 18px rgb(88, 207, 201, 0.24);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition:
+        left 0.16s ease,
+        top 0.16s ease,
+        width 0.16s ease,
+        height 0.16s ease;
+}
+
+/* Step 2 Dual-Mode Architecture: Snapped Side-by-Side 3D Game Window + Docked Element Chat Window */
+.pso-lobby3d-modal--unified-stage {
+    left: 8px;
+    top: 50px;
+    transform: none;
+    box-sizing: border-box;
+    width: calc(100vw - 16px);
+    height: calc(100vh - 142px);
+    z-index: 42;
+}
+
+.pso-lobby3d-modal--unified-stage.pso-lobby3d-modal--chat-dock-open {
+    width: calc(100vw - clamp(300px, 33vw, 410px) - 18px);
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+}
+
+body.pso-unified-guild-stage .mx_SpacePanel,
+body.pso-unified-guild-stage .mx_LeftPanel_outerWrapper,
+body.pso-unified-guild-stage .mx_LeftPanel_wrapper,
+body.pso-unified-guild-stage .mx_LeftPanel_panel:has(.mx_LeftPanel_outerWrapper),
+body.pso-unified-guild-stage .mx_Separator,
+body.pso-unified-guild-stage .mx_RightPanel {
+    display: none !important;
+}
+
+body.pso-unified-guild-stage.pso-unified-guild-chat-dock .mx_RoomView_wrapper {
+    position: fixed !important;
+    left: auto !important;
+    right: 8px !important;
+    top: 50px !important;
+    bottom: auto !important;
+    box-sizing: border-box !important;
+    width: clamp(300px, 33vw, 410px) !important;
+    height: calc(100vh - 142px) !important;
+    z-index: 44 !important;
+    border-radius: 9px !important;
+    border-top-left-radius: 3px !important;
+    border-bottom-left-radius: 3px !important;
+    border: 2px solid var(--pso-fg-cyan-bright) !important;
+    box-shadow:
+        0 14px 38px rgb(0, 0, 0, 0.78),
+        inset 0 0 14px rgb(88, 207, 201, 0.2) !important;
+}
+
+body.pso-unified-guild-chat-hidden .mx_RoomView_wrapper {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Step 3: Episode I Pioneer 2 Hunter's Guild Station Proximity Banner & Counter Modal */
+.pso-guild-proximity-banner {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    z-index: 12;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+    border-radius: 7px;
+    background: linear-gradient(180deg, rgb(12, 58, 68, 0.94) 0%, rgb(4, 22, 28, 0.96) 100%);
+    border: 1.5px solid var(--pso-amber-bright);
+    box-shadow:
+        0 8px 24px rgb(0, 0, 0, 0.8),
+        0 0 14px rgb(242, 198, 80, 0.32);
+    color: #fff8e6;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.pso-guild-counter-panel {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 20;
+    width: min(560px, 92%);
+    max-height: 86%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgb(8, 46, 56, 0.97) 0%, rgb(3, 16, 22, 0.99) 100%);
+    border: 2px solid var(--pso-fg-cyan-bright);
+    box-shadow:
+        0 18px 46px rgb(0, 0, 0, 0.9),
+        inset 0 0 18px rgb(88, 207, 201, 0.25);
+    color: var(--pso-fg-cyan-ice);
+}
+
+.pso-guild-counter-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgb(88, 207, 201, 0.4);
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: var(--pso-amber-bright);
+}
+
+.pso-guild-station-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pso-guild-counter-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.pso-guild-counter-actions-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pso-guild-room-list-title {
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--pso-fg-cyan-mid);
+}
+
+.pso-guild-room-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 210px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.pso-guild-room-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 5px;
+    background: rgb(6, 28, 36, 0.85);
+    border: 1px solid rgb(88, 207, 201, 0.35);
+    color: var(--pso-fg-cyan-ice);
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+}
+
+.pso-guild-room-row:hover {
+    border-color: var(--pso-amber-bright);
+    background: rgb(16, 62, 74, 0.92);
+}
+
+.pso-guild-room-row--current {
+    border-color: #50f296;
+    background: rgb(10, 56, 44, 0.88);
+}
+
+.pso-guild-room-block {
+    font-size: 10px;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgb(0, 14, 20, 0.8);
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    color: var(--pso-amber-bright);
+}
+
+.pso-guild-room-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pso-guild-room-meta {
+    font-size: 10.5px;
+    color: #8ae3dd;
+    white-space: nowrap;
+}
+
+.pso-guild-station-desc {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--pso-fg-cyan-ice);
+}
+
+.pso-lobby3d-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgb(88, 207, 201, 0.35);
+}
+
+.pso-lobby3d-brand {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: var(--pso-fg-cyan-ice);
+}
+
+.pso-lobby3d-top-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+}
+
+.pso-mini-act-btn {
+    white-space: nowrap;
+}
+
+.pso-mini-act-btn--active {
+    border-color: var(--pso-amber-border);
+    background: linear-gradient(90deg, rgb(209, 137, 36, 0.78) 0%, rgb(156, 86, 16, 0.82) 100%);
+    color: #fff9eb;
+}
+
+.pso-lobby3d-viewport-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    border-radius: 7px;
+    overflow: hidden;
+    border: 1.5px solid var(--pso-fg-cyan-main);
+    background: radial-gradient(circle at 50% 35%, #0e3844 0%, #030d14 100%);
+}
+
+.pso-lobby3d-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+}
+
+.pso-lobby3d-overlay-labels {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.pso-lobby3d-nametag {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-shadow:
+        0 1px 3px #000000,
+        0 0 6px #000000;
+    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.pso-lobby3d-symbol-pill {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgb(235, 112, 152, 0.92);
+    border: 1.5px solid #ffffff;
+    color: #ffffff;
+    font-size: 10px;
+}
+
+.pso-lobby3d-speech-balloon {
+    position: relative;
+    max-width: 240px;
+    padding: 4px 10px;
+    margin-bottom: 4px;
+    border-radius: 6px;
+    background: linear-gradient(180deg, rgb(12, 58, 70, 0.95) 0%, rgb(4, 24, 32, 0.96) 100%);
+    border: 1.5px solid #8ae3dd;
+    box-shadow:
+        0 4px 12px rgb(0, 0, 0, 0.8),
+        inset 0 0 8px rgb(138, 227, 221, 0.25);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+}
+
+.pso-lobby3d-speech-tail {
+    position: absolute;
+    left: 50%;
+    bottom: -6px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #8ae3dd;
+}
+
+.pso-focus-mode-pill {
+    margin-left: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    border: 1px solid #8ae3dd;
+    transition: all 0.12s ease;
+}
+
+.pso-focus-mode-pill--world {
+    background: rgb(26, 132, 86, 0.88);
+    border-color: #69f5a8;
+    color: #eafff2;
+    box-shadow: 0 0 8px rgb(80, 242, 150, 0.4);
+}
+
+.pso-focus-mode-pill--chat {
+    background: rgb(186, 112, 22, 0.9);
+    border-color: #ffd470;
+    color: #fff8e6;
+    box-shadow: 0 0 8px rgb(255, 196, 68, 0.45);
+}
+
+.pso-lobby3d-chat-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    background: rgb(3, 16, 22, 0.92);
+    border: 1px solid rgb(88, 207, 201, 0.5);
+}
+
+.pso-lobby3d-chat-prompt {
+    font-size: 11px;
+    font-weight: 900;
+    color: #69f5a8;
+    letter-spacing: 0.06em;
+    user-select: none;
+}
+
+.pso-lobby3d-chat-input {
+    flex: 1;
+    background: rgb(8, 34, 42, 0.9);
+    border: 1px solid rgb(138, 227, 221, 0.4);
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #ffffff;
+    font-size: 12px;
+    outline: none;
+}
+
+.pso-lobby3d-chat-input:focus {
+    border-color: #ffd470;
+    box-shadow: 0 0 8px rgb(255, 212, 112, 0.35);
+}
+
+.pso-lobby3d-loot-box {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgb(4, 18, 24, 0.86);
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    pointer-events: none;
+}
+
+.pso-lobby3d-loot-title {
+    font-size: 11px;
+    font-weight: 900;
+    color: #ffe26a;
+    letter-spacing: 0.05em;
+}
+
+.pso-lobby3d-rare-line {
+    font-size: 10px;
+    font-weight: 800;
+    color: #ff8a96;
+}
+
+.pso-reshade-panel,
+.pso-asset-loader-panel {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: min(325px, calc(100% - 20px));
+    max-width: 325px;
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: rgb(4, 20, 28, 0.94);
+    border: 1.5px solid var(--pso-fg-cyan-bright);
+    box-shadow: 0 10px 26px rgb(0, 0, 0, 0.82);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 4;
+}
+
+.pso-asset-loader-panel {
+    top: auto;
+    bottom: 10px;
+}
+
+.pso-asset-loader-panel .pso-lobby3d-select {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pso-asset-status {
+    font-size: 10px;
+    font-weight: 700;
+    color: #b8f2ee;
+    line-height: 1.35;
+}
+
+.pso-asset-btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pso-asset-btn-row > .pso-mini-act-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+}
+
+.pso-lobby3d-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.pso-lobby3d-controls-hint {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--pso-fg-cyan-ice);
+    flex-wrap: wrap;
+}
+
+.pso-lobby3d-loadout {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pso-lobby3d-select {
+    padding: 3px 7px;
+    border-radius: 4px;
+    border: 1px solid rgb(88, 207, 201, 0.48);
+    background: rgb(6, 26, 34, 0.92);
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.pso-symbol-chat-sender {
+    font-size: 13px;
+    font-weight: 800;
+    color: #ffffff;
+    text-shadow: 0 1px 3px #000000;
+    margin-bottom: 4px;
+}
+
+.pso-symbol-rappy-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pso-symbol-chat-sub {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--pso-amber-bright);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.pso-symbol-chat-body {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f2fbfb;
+    margin-top: 2px;
+}
+
+/* ============================================================================
+ * 7. QUICK-REPLY BAR & WALLPAPER/HUD TUNER POPOVER
+ * ============================================================================ */
+.pso-quick-reply-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 66px;
+    transform: translateX(-50%);
+    z-index: 44;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: min(520px, 90vw);
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: linear-gradient(180deg, rgb(12, 58, 66, 0.92) 0%, rgb(5, 22, 28, 0.96) 100%);
+    border: 1.5px solid var(--pso-amber-border);
+    box-shadow: 0 8px 24px rgb(0, 0, 0, 0.75);
+}
+
+.pso-quick-reply-prompt {
+    font-size: 11px;
+    font-weight: 900;
+    color: var(--pso-amber-bright);
+    letter-spacing: 0.06em;
+}
+
+.pso-quick-reply-input {
+    flex: 1;
+    background: rgb(3, 14, 20, 0.85);
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    border-radius: 4px;
+    padding: 5px 9px;
+    color: #ffffff;
+    font-size: 13px;
+}
+
+.pso-tuner-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 590;
+    background: transparent;
+    pointer-events: auto;
+}
+
+.pso-tuner-popover {
+    position: fixed;
+    right: 18px;
+    bottom: 72px;
+    z-index: 620;
+    width: 318px;
+    max-height: calc(100vh - 116px);
+    overflow-y: auto;
+    padding: 12px 14px;
+    border-radius: 7px;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.04) 0px,
+            rgb(138, 227, 221, 0.04) 1px,
+            rgb(0, 8, 14, 0.26) 1px,
+            rgb(0, 8, 14, 0.26) 3px
+        ),
+        linear-gradient(180deg, rgb(12, 58, 66, 0.95) 0%, rgb(5, 22, 28, 0.98) 100%);
+    border: 1.5px solid var(--pso-fg-cyan-main);
+    box-shadow: 0 12px 32px rgb(0, 0, 0, 0.85);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pso-tuner-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.pso-tuner-divider {
+    height: 1px;
+    background: rgb(88, 207, 201, 0.28);
+    margin: 2px 0;
+}
+
+.pso-tuner-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--pso-amber-bright);
+    letter-spacing: 0.04em;
+}
+
+.pso-tuner-link-btn {
+    background: transparent;
+    border: 1px solid rgb(88, 207, 201, 0.4);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--pso-fg-cyan-ice);
+    cursor: pointer;
+}
+
+.pso-tuner-link-btn:hover {
+    border-color: var(--pso-amber-border);
+    color: #ffffff;
+}
+
+.pso-hex-customizer-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+    padding-top: 2px;
+}
+
+.pso-hex-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 7px;
+    border-radius: 4px;
+    border: 1px solid rgb(88, 207, 201, 0.32);
+    background: rgb(6, 24, 32, 0.78);
+    color: #9ec8c6;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.12s ease;
+}
+
+.pso-hex-chip:hover {
+    border-color: var(--pso-fg-cyan-bright);
+    color: #ffffff;
+}
+
+.pso-hex-chip--equipped {
+    border-color: var(--pso-amber-border);
+    background: linear-gradient(90deg, rgb(209, 137, 36, 0.42) 0%, rgb(16, 62, 72, 0.78) 100%);
+    color: #fff8e6;
+}
+
+.pso-hex-chip-icon {
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.pso-hex-chip-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pso-hex-chip-slot {
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgb(217, 148, 56, 0.85);
+    color: #041218;
+    font-size: 9px;
+    font-weight: 900;
+}
+
+.pso-tuner-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--pso-fg-cyan-ice);
+}
+
+.pso-tuner-btn-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.pso-tuner-btn {
+    padding: 5px 6px;
+    border-radius: 4px;
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    background: rgb(9, 36, 44, 0.8);
+    color: var(--pso-fg-cyan-ice);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.pso-tuner-btn--active {
+    background: linear-gradient(90deg, rgb(209, 137, 36, 0.72) 0%, rgb(227, 165, 58, 0.56) 100%);
+    border-color: var(--pso-amber-border);
+    color: #fff8e6;
+}
+
+.pso-tuner-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--pso-fg-cyan-ice);
+    cursor: pointer;
+}
+
+/* ============================================================================
+ * 8. BOTTOM EPISODE IV 1–0 HEXAGONAL ACTION PALETTE + 4-HEX CLUSTER + @BEAT
+ * ============================================================================ */
+.pso-hex-bar-wrap {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 6px;
+    min-height: 54px;
+    z-index: 42;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.pso-hex-quickbar {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 10px;
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgb(8, 36, 44, 0.65) 0%, rgb(3, 14, 20, 0.82) 100%);
+    border: 1px solid rgb(88, 207, 201, 0.35);
+    backdrop-filter: blur(6px);
+    pointer-events: auto;
+    max-width: calc(100vw - 290px);
+    overflow-x: auto;
+    flex-shrink: 1;
+}
+
+.pso-hex-slot {
+    position: relative;
+    width: 42px;
+    height: 46px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.12s ease;
+}
+
+.pso-hex-slot:hover {
+    transform: translateY(-2px);
+}
+
+.pso-hex-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.pso-hex-outer {
+    fill: rgb(7, 28, 36, 0.88);
+    stroke: var(--pso-fg-cyan-main);
+    stroke-width: 1.8;
+}
+
+.pso-hex-inner {
+    fill: rgb(14, 56, 66, 0.62);
+    stroke: rgb(138, 227, 221, 0.38);
+    stroke-width: 1;
+}
+
+.pso-hex-slot:hover .pso-hex-outer,
+.pso-hex-slot--active .pso-hex-outer {
+    stroke: var(--pso-amber-border);
+    fill: rgb(92, 54, 14, 0.85);
+}
+
+.pso-hex-slot:hover .pso-hex-inner,
+.pso-hex-slot--active .pso-hex-inner {
+    fill: rgb(217, 148, 56, 0.48);
+    stroke: #f7deb0;
+}
+
+.pso-hex-slot--danger .pso-hex-outer {
+    stroke: var(--pso-danger-red);
+}
+
+.pso-hex-num {
+    position: absolute;
+    top: -3px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    font-size: 10px;
+    font-weight: 900;
+    color: #ffffff;
+    text-shadow:
+        0 1px 2px #000000,
+        0 0 4px #000000;
+}
+
+.pso-hex-glyph {
+    position: relative;
+    z-index: 1;
+    font-size: 16px;
+    line-height: 1;
+    margin-top: 3px;
+}
+
+.pso-hex-right-cluster {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: auto;
+    flex-shrink: 0;
+}
+
+.pso-hex-right-cluster--floating {
+    padding: 0;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid transparent;
+}
+
+.pso-hex-right-cluster--dragging {
+    padding: 4px 6px;
+    border-radius: 8px;
+    background: rgb(4, 18, 24, 0.45);
+    border: 1px dashed rgb(88, 207, 201, 0.48);
+}
+
+.pso-hex-diamond-drag-handle {
+    position: absolute;
+    left: 39px;
+    top: 37px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgb(8, 40, 48, 0.92);
+    border: 1px solid var(--pso-fg-cyan-bright);
+    color: var(--pso-amber-bright);
+    font-size: 10px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    z-index: 5;
+    user-select: none;
+    box-shadow: 0 0 6px rgb(0, 0, 0, 0.85);
+    opacity: 0;
+    transition: opacity 0.16s ease, transform 0.12s ease;
+}
+
+.pso-hex-diamond-group:hover .pso-hex-diamond-drag-handle,
+.pso-hex-right-cluster--dragging .pso-hex-diamond-drag-handle {
+    opacity: 0.92;
+}
+
+.pso-hex-diamond-drag-handle:active {
+    cursor: grabbing;
+    transform: scale(1.12);
+}
+
+/* Authentic PSO Episode IV 4-Hexagon Honeycomb Diamond Cluster (1 Top Chat + 2 Middle + 1 Bottom) */
+.pso-hex-diamond-group {
+    position: relative;
+    width: 96px;
+    height: 92px;
+    margin-bottom: -2px;
+}
+
+.pso-tri-hex {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.pso-tri-hex:hover {
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 8px rgb(138, 227, 221, 0.85));
+    z-index: 3;
+}
+
+.pso-tri-hex svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.pso-tri-hex span {
+    position: relative;
+    z-index: 1;
+    font-size: 15px;
+    color: #ffffff;
+    text-shadow: 0 1px 2px #000000;
+}
+
+.pso-tri-hex--diamond-top {
+    top: 0;
+    left: 28px;
+}
+
+.pso-tri-hex--diamond-left {
+    top: 26px;
+    left: 6px;
+}
+
+.pso-tri-hex--diamond-right {
+    top: 26px;
+    left: 50px;
+}
+
+.pso-tri-hex--diamond-bottom {
+    top: 52px;
+    left: 28px;
+}
+
+/* ============================================================================
+ * 9. COMPACT FLOATING TEXT-ONLY CHATBOX MODE (4th Hexagon Toggle / Alt+C)
+ * ============================================================================ */
+body.pso-compact-chat-mode .mx_SpacePanel,
+body.pso-compact-chat-mode .mx_LeftPanel_outerWrapper,
+body.pso-compact-chat-mode .mx_LeftPanel_wrapper,
+body.pso-compact-chat-mode .mx_LeftPanel_panel:has(.mx_LeftPanel_outerWrapper),
+body.pso-compact-chat-mode .mx_Separator,
+body.pso-compact-chat-mode .mx_RightPanel,
+body.pso-compact-chat-mode .mx_PinnedMessageBanner,
+body.pso-compact-chat-mode .mx_RoomHeader_buttons,
+body.pso-compact-chat-mode .mx_RoomView_callVoicePane,
+body.pso-compact-chat-mode .mx_RoomView_callVoicePane_resizer,
+body.pso-compact-chat-mode #mx_PersistedElement_container {
+    display: none !important;
+}
+
+body.pso-stream-overlay-mode #mx_PersistedElement_container {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* ============================================================================
+ * 10. VOICE / VIDEO CALL (VC) PANE — PSO GLASS OPACITY & CRT SCANLINES INTEGRATION
+ * ============================================================================ */
+.mx_RoomView_callVoicePane {
+    background: transparent !important;
+    border-left: 1.5px solid var(--pso-fg-cyan-main) !important;
+}
+
+.mx_CallView,
+.mx_CallView .mx_AppTile,
+.mx_AppTileFullWidth,
+.mx_AppTile_persistedWrapper,
+#mx_PersistedElement_container .mx_AppTileBody,
+#mx_PersistedElement_container .mx_AppTileBody--call {
+    background: transparent !important;
+    background-color: transparent !important;
+    border-color: transparent !important;
+}
+
+#mx_PersistedElement_container [data-element-call-root],
+#mx_PersistedElement_container [data-element-call-root].cpd-theme-dark,
+#mx_PersistedElement_container [data-element-call-root].cpd-theme-light,
+[data-element-call-root],
+[data-element-call-root].cpd-theme-dark,
+[data-element-call-root].cpd-theme-light {
+    --cpd-color-bg-canvas-default: transparent !important;
+    --cpd-color-bg-subtle-primary: rgb(11, 52, 62, calc(var(--pso-glass-alpha) * 0.85)) !important;
+    --cpd-color-bg-subtle-secondary: rgb(8, 38, 46, calc(var(--pso-glass-alpha) * 0.82)) !important;
+    --video-tile-background: rgb(8, 38, 46, calc(var(--pso-glass-alpha) * 0.78)) !important;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgb(138, 227, 221, 0.035) 0px,
+            rgb(138, 227, 221, 0.035) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 1px,
+            rgb(0, 8, 14, var(--pso-scanline-alpha)) 3px
+        ),
+        linear-gradient(
+            180deg,
+            rgb(9, 54, 62, calc(var(--pso-glass-alpha) * 0.75)) 0%,
+            rgb(4, 22, 28, calc(var(--pso-glass-alpha) * 0.88)) 100%
+        ) !important;
+    background-color: transparent !important;
+}
+
+[data-element-call-root] [data-background="solid"] {
+    border: 1px solid rgb(88, 207, 201, 0.42) !important;
+    border-radius: 8px !important;
+    box-shadow: inset 0 0 12px rgb(88, 207, 201, 0.12) !important;
+}
+
+[data-element-call-root] [data-testid="compact-footer-bar"],
+[data-element-call-root] [data-testid="compact-controls-popover"] {
+    background: linear-gradient(
+        180deg,
+        rgb(12, 56, 66, calc(var(--pso-glass-alpha) + 0.18)) 0%,
+        rgb(5, 22, 28, calc(var(--pso-glass-alpha) + 0.28)) 100%
+    ) !important;
+    border: 1.5px solid var(--pso-fg-cyan-main) !important;
+    box-shadow: 0 6px 20px rgb(0, 0, 0, 0.65) !important;
+}
+
+body.pso-compact-chat-mode .mx_MatrixChat {
+    padding: 0 !important;
+    pointer-events: none;
+}
+
+body.pso-compact-chat-mode:not(.pso-unified-guild-stage) .mx_RoomView_wrapper {
+    position: fixed !important;
+    right: 16px !important;
+    bottom: 102px !important;
+    width: min(460px, calc(100vw - 32px)) !important;
+    height: min(410px, calc(100vh - 148px)) !important;
+    z-index: 38 !important;
+    pointer-events: auto !important;
+    border-radius: 7px !important;
+    box-shadow:
+        inset 0 0 0 1.5px var(--pso-fg-cyan-main),
+        0 12px 32px rgb(0, 0, 0, 0.78) !important;
+}
+
+body.pso-compact-chat-mode .mx_RoomHeader {
+    min-height: 34px !important;
+    padding: 4px 10px !important;
+}
+
+/* Hide all images, videos, stickers, link preview cards, and media frames in Compact Text-Only Mode */
+body.pso-compact-chat-mode .mx_ImageBody,
+body.pso-compact-chat-mode .mx_MImageBody,
+body.pso-compact-chat-mode .mx_MVideoBody,
+body.pso-compact-chat-mode .mx_MStickerBody,
+body.pso-compact-chat-mode .mx_LinkPreviewWidget,
+body.pso-compact-chat-mode .mx_EventTile_mediaLine,
+body.pso-compact-chat-mode .mx_EventTile_content img,
+body.pso-compact-chat-mode .mx_EventTile_content video {
+    display: none !important;
+}
+
+/* Collapse image-only / sticker-only message tiles cleanly or show compact text indicator */
+body.pso-compact-chat-mode .mx_EventTile[data-layout] .mx_EventTile_line:has(.mx_ImageBody):not(:has(.markdown-body))::after,
+body.pso-compact-chat-mode .mx_EventTile[data-layout] .mx_EventTile_line:has(.mx_MVideoBody):not(:has(.markdown-body))::after {
+    content: "[media hidden in compact text mode]";
+    font-size: 11px;
+    font-style: italic;
+    color: var(--pso-fg-cyan-mid);
+    opacity: 0.78;
+}
+
+.pso-beat-time-readout {
+    padding: 3px 10px;
+    border-radius: 4px;
+    background: rgb(5, 20, 28, 0.86);
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    color: var(--pso-fg-cyan-ice);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px #000000;
+}
+
+.pso-beat-time-readout strong {
+    color: var(--pso-amber-bright);
+}
+
+/* Section ID Dot & Clickable Nameplate + PSOBB Hunter Guild Card Modal */
+.pso-lobby3d-nametag-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.pso-section-id-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid #ffffff;
+    box-shadow: 0 0 6px currentColor;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.pso-lobby3d-nametag--clickable {
+    pointer-events: auto !important;
+    cursor: pointer;
+    transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.pso-lobby3d-nametag--clickable:hover {
+    transform: translate(-50%, -100%) scale(1.06);
+    border-color: #ffe866;
+}
+
+.pso-guild-card-modal {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(380px, 90%);
+    background: linear-gradient(180deg, rgb(6, 26, 38, 0.96) 0%, rgb(3, 14, 22, 0.98) 100%);
+    border: 2px solid var(--pso-fg-cyan-main);
+    border-radius: 8px;
+    box-shadow: 0 14px 40px rgb(0, 0, 0, 0.85), inset 0 0 16px rgb(88, 207, 201, 0.25);
+    z-index: 45;
+    pointer-events: auto;
+    overflow: hidden;
+}
+
+.pso-guild-card-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 12px;
+    color: #d8f8ff;
+}
+
+.pso-guild-card-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px dashed rgb(88, 207, 201, 0.25);
+    padding-bottom: 5px;
+}
+
+.pso-guild-card-label {
+    color: #8ae3dd;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+}
+

@@ -6,13 +6,18 @@
  */
 
 .header {
-    min-height: 60px;
-    padding: 0 var(--cpd-space-4x) 0 var(--cpd-space-3x);
+    min-height: 48px;
+    padding: 6px var(--cpd-space-3x) 4px var(--cpd-space-3x);
+    background: linear-gradient(180deg, rgba(24, 92, 98, 0.72) 0%, rgba(10, 42, 48, 0.85) 100%);
+    border-bottom: 1.5px solid #58cfc9;
+    box-shadow:
+        0 2px 10px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(178, 240, 236, 0.35);
 }
 
 .container {
     flex: 1;
-    padding-bottom: var(--cpd-space-3x);
+    padding-bottom: 2px;
     min-width: 0;
 }
 
@@ -26,5 +31,11 @@
         white-space: nowrap;
         text-overflow: ellipsis;
         user-select: none; /* currently supported by Chrome, Edge, Opera and Firefox */
+        color: #f4fbfb;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        text-shadow:
+            0 1px 2px #000,
+            0 0 8px rgba(88, 207, 201, 0.55);
     }
 }

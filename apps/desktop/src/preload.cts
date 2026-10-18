@@ -35,6 +35,7 @@ const CHANNELS = [
     "homeserverUrl",
     "serverSupportedVersions",
     "showToast",
+    "psoHudEvent",
 ];
 
 contextBridge.exposeInMainWorld("electron", {

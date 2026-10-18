@@ -54,11 +54,11 @@
     --event-tile-action-bar-size: 28px;
     --event-tile-action-bar-margin: 3px;
     --event-tile-action-bar-offset: 8px;
-    --event-tile-state-hover-background: var(--cpd-color-bg-subtle-secondary);
-    --event-tile-state-highlight-background: var(--cpd-color-yellow-200);
-    --event-tile-state-selected-background: var(--cpd-color-bg-subtle-secondary);
+    --event-tile-state-hover-background: rgba(209, 137, 36, 0.24);
+    --event-tile-state-highlight-background: rgba(227, 165, 58, 0.36);
+    --event-tile-state-selected-background: rgba(209, 137, 36, 0.42);
     --event-tile-state-marker-width: 4px;
-    --event-tile-state-marker-color: var(--cpd-color-bg-action-primary-rest);
+    --event-tile-state-marker-color: #efc278;
 
     position: relative;
     flex-shrink: 0;
