@@ -2805,28 +2805,30 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                                     {messageComposer}
                                 </RoomUploadContextProvider>
                             </div>
-                            <button
-                                type="button"
-                                className={classNames("mx_RoomView_callVoicePane_collapseBtn", {
-                                    "mx_RoomView_callVoicePane_collapseBtn--collapsed": isVoicePaneCollapsed,
-                                })}
-                                onClick={this.onToggleCallVoicePaneCollapsed}
-                                title={
-                                    isVoicePaneCollapsed
-                                        ? "Expand Call Window"
-                                        : "Collapse Call Window"
-                                }
-                                aria-label={
-                                    isVoicePaneCollapsed
-                                        ? "Expand Call Window"
-                                        : "Collapse Call Window"
-                                }
-                                data-testid="room-call-voice-pane-collapse-btn"
-                            >
-                                <span className="mx_RoomView_callVoicePane_collapseGlyph">
-                                    {isVoicePaneCollapsed ? "❮ CALL" : "❯"}
-                                </span>
-                            </button>
+                            <div className="mx_RoomView_callVoicePane_edge">
+                                <button
+                                    type="button"
+                                    className={classNames("mx_RoomView_callVoicePane_collapseBtn", {
+                                        "mx_RoomView_callVoicePane_collapseBtn--collapsed": isVoicePaneCollapsed,
+                                    })}
+                                    onClick={this.onToggleCallVoicePaneCollapsed}
+                                    title={
+                                        isVoicePaneCollapsed
+                                            ? "Expand Call Window"
+                                            : "Collapse Call Window"
+                                    }
+                                    aria-label={
+                                        isVoicePaneCollapsed
+                                            ? "Expand Call Window"
+                                            : "Collapse Call Window"
+                                    }
+                                    data-testid="room-call-voice-pane-collapse-btn"
+                                >
+                                    <span className="mx_RoomView_callVoicePane_collapseGlyph">
+                                        {isVoicePaneCollapsed ? "❮ CALL" : "❯ HIDE"}
+                                    </span>
+                                </button>
+                            </div>
                             <div
                                 className={classNames("mx_RoomView_callVoicePane", {
                                     "mx_RoomView_callVoicePane--collapsed": isVoicePaneCollapsed,

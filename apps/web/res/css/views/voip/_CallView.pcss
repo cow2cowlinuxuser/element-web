@@ -63,27 +63,34 @@ Please see LICENSE files in the repository root for full details.
     pointer-events: none !important;
 }
 
+.mx_RoomView_callVoicePane_edge {
+    position: relative;
+    flex: 0 0 0;
+    width: 0;
+    z-index: 120;
+}
+
 .mx_RoomView_callVoicePane_collapseBtn {
-    align-self: center;
-    flex: 0 0 auto;
+    position: absolute;
+    top: 12px;
+    right: 0;
     z-index: 120;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 20px;
-    height: 54px;
-    padding: 0 4px;
-    margin-right: -1px;
+    height: 28px;
+    padding: 0 9px;
     border-radius: 6px 0 0 6px;
     border: 1.5px solid #58cfc9;
     border-right: none;
-    background: linear-gradient(180deg, rgb(12, 58, 68, 0.94) 0%, rgb(4, 22, 28, 0.96) 100%);
+    background: linear-gradient(180deg, rgb(12, 58, 68, 0.95) 0%, rgb(4, 22, 28, 0.98) 100%);
     color: #e6f7f6;
     font-size: 11px;
     font-weight: 800;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgb(0 0 0 / 60%);
+    box-shadow: -3px 4px 14px rgb(0 0 0 / 65%);
     transition:
         background 0.14s ease,
         border-color 0.14s ease,
@@ -97,11 +104,8 @@ Please see LICENSE files in the repository root for full details.
 }
 
 .mx_RoomView_callVoicePane_collapseBtn--collapsed {
-    height: 64px;
-    padding: 0 8px;
-    margin-right: 0;
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
+    border-color: #ffd470;
+    color: #ffd470;
 }
 
 .mx_RoomView_callVoicePane_resizer {
