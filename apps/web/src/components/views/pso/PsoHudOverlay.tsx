@@ -50,7 +50,10 @@ import {
 } from "./PsoLobby3dLayer";
 import {
     PsoFullGameMenu,
+    PsoFunctionKeyBar,
+    type PsoGameMenuRequest,
     type PsoMainMenuTabId,
+    type PsoMenuSectionId,
 } from "./PsoFullGameMenu";
 
 const STORAGE_KEYS = {
@@ -431,7 +434,8 @@ export function PsoHudOverlay(): JSX.Element {
     const [isSymbolEditorOpen, setIsSymbolEditorOpen] = useState<boolean>(false);
     const [isLobby3dOpen, setIsLobby3dOpen] = useState<boolean>(false);
     const [isFullGameMenuOpen, setIsFullGameMenuOpen] = useState<boolean>(false);
-    const [activeGameMenuTab, setActiveGameMenuTab] = useState<PsoMainMenuTabId>("item_pack");
+    const [gameMenuRequest, setGameMenuRequest] = useState<PsoGameMenuRequest | null>(null);
+    const [lobbyViewportEl, setLobbyViewportEl] = useState<HTMLDivElement | null>(null);
     const [showFunctionKeyBar, setShowFunctionKeyBar] = useState<boolean>(() => {
         try {
             const raw = localStorage.getItem("pso_hud_show_fkey_bar");
@@ -1905,56 +1909,73 @@ export function PsoHudOverlay(): JSX.Element {
         });
     }, []);
 
+    const openGameMenuAt = useCallback((tab: PsoMainMenuTabId, section: PsoMenuSectionId | null): void => {
+        setIsFullGameMenuOpen(true);
+        setGameMenuRequest((prev) => ({ tab, section, nonce: (prev?.nonce ?? 0) + 1 }));
+    }, []);
+
+    /** PSOBB function-key bar: index 0 = F1 ... 11 = F12. */
+    const pressFunctionKey = useCallback(
+        (index: number): void => {
+            switch (index) {
+                case 0:
+                    playUiMenuSound("cursor");
+                    toggleFunctionKeyBar();
+                    break;
+                case 1:
+                    openGameMenuAt("item_pack", "equip");
+                    break;
+                case 2:
+                    openGameMenuAt("item_pack", "technique");
+                    break;
+                case 3:
+                    openGameMenuAt("item_pack", "mag");
+                    break;
+                case 4:
+                    openGameMenuAt("chat", "guild_cards");
+                    break;
+                case 5:
+                    openGameMenuAt("chat", "simple_mail");
+                    break;
+                case 6:
+                    playUiMenuSound("confirm");
+                    setIsFullGameMenuOpen(false);
+                    setIsSymbolEditorOpen(true);
+                    break;
+                case 7:
+                    openGameMenuAt("team", "team_list");
+                    break;
+                case 8:
+                    playUiMenuSound("cursor");
+                    setIsCompactChat((prev) => !prev);
+                    break;
+                case 9:
+                    setIsFullGameMenuOpen(false);
+                    defaultDispatcher.fire(Action.FocusSendMessageComposer);
+                    break;
+                case 10:
+                    sendElectronIpc("psoWindowToggleFullScreen");
+                    break;
+                case 11:
+                    setIsFullGameMenuOpen((prev) => !prev);
+                    break;
+            }
+        },
+        [openGameMenuAt, playUiMenuSound, toggleFunctionKeyBar],
+    );
+
     // Keyboard shortcuts: F12 PSOBB Main Menu, F1-F10 Function Keys, Alt+1..Alt+0 for Equipped Hex Quickbar, Alt+O / Alt+C / Alt+G, F11
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent): void => {
-            if (e.key === "F12" && !e.ctrlKey && !e.altKey && !e.metaKey) {
-                e.preventDefault();
-                playUiMenuSound("confirm");
-                setIsFullGameMenuOpen((prev) => !prev);
-                return;
-            }
-            if (e.key === "Escape" && isFullGameMenuOpen) {
-                e.preventDefault();
-                playUiMenuSound("cancel");
-                setIsFullGameMenuOpen(false);
-                return;
-            }
-            if (
-                (isFullGameMenuOpen || isLobby3dOpen || showFunctionKeyBar) &&
-                !e.ctrlKey &&
-                !e.altKey &&
-                !e.metaKey &&
-                /^F([1-9]|10)$/.test(e.key)
-            ) {
-                e.preventDefault();
-                playUiMenuSound("confirm");
-                if (e.key === "F1") {
-                    toggleFunctionKeyBar();
-                } else {
-                    const fKeyTabMap: Record<string, PsoMainMenuTabId> = {
-                        F2: "item_pack",
-                        F3: "technique",
-                        F4: "mag",
-                        F5: "guild_card",
-                        F6: "guild_card",
-                        F7: "chat",
-                        F8: "team",
-                        F9: "team",
-                        F10: "status",
-                    };
-                    const targetTab = fKeyTabMap[e.key];
-                    if (targetTab) {
-                        setActiveGameMenuTab(targetTab);
-                        setIsFullGameMenuOpen(true);
-                    }
+            const fKeyMatch = /^F([1-9]|1[0-2])$/.exec(e.key);
+            if (fKeyMatch && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                const index = Number(fKeyMatch[1]) - 1;
+                // F1-F10 only act as game keys while the PSO bar, lobby or menu is up; F11/F12 always do.
+                if (index >= 10 || isFullGameMenuOpen || isLobby3dOpen || showFunctionKeyBar) {
+                    e.preventDefault();
+                    pressFunctionKey(index);
+                    return;
                 }
-                return;
-            }
-            if (e.key === "F11") {
-                e.preventDefault();
-                sendElectronIpc("psoWindowToggleFullScreen");
-                return;
             }
             if (e.altKey && (e.key === "g" || e.key === "G")) {
                 e.preventDefault();
@@ -1995,9 +2016,8 @@ export function PsoHudOverlay(): JSX.Element {
         isFullGameMenuOpen,
         isLobby3dOpen,
         isStreamOverlay,
-        playUiMenuSound,
+        pressFunctionKey,
         showFunctionKeyBar,
-        toggleFunctionKeyBar,
     ]);
 
     const onWallpaperUpload = (e: React.ChangeEvent<HTMLInputElement>): void => {
@@ -2118,6 +2138,11 @@ export function PsoHudOverlay(): JSX.Element {
         window.addEventListener("mouseup", onMouseUp);
     }, []);
 
+    // Inside the 3D lobby, HUD windows live in the game viewport so they scale with it and never cover the lobby toolbar.
+    const isHudInLobbyViewport = isLobby3dOpen && !isCompactChat && !isStreamOverlay && lobbyViewportEl !== null;
+    const placeInLobbyViewport = (node: React.ReactNode): React.ReactNode =>
+        isHudInLobbyViewport && lobbyViewportEl ? createPortal(node, lobbyViewportEl) : node;
+
     const hudLayerContent = (
         <div
             className={classNames("pso-hud-layer", {
@@ -2184,11 +2209,8 @@ export function PsoHudOverlay(): JSX.Element {
                                 className={classNames("pso-window-ctrl-btn", {
                                     "pso-window-ctrl-btn--active": isFullGameMenuOpen,
                                 })}
-                                onClick={() => {
-                                    playUiMenuSound("confirm");
-                                    setIsFullGameMenuOpen((prev) => !prev);
-                                }}
-                                title="Open Extracted PSOBB Full Game Menu (F12 — Item Pack, Technique, Mag, Status, Guild Card, Team, Option)"
+                                onClick={() => setIsFullGameMenuOpen((prev) => !prev)}
+                                title="Main Menu (F12)"
                                 aria-label="Toggle PSOBB Full Game Menu"
                                 data-testid="pso-titlebar-game-menu-btn"
                             >
@@ -2339,10 +2361,13 @@ export function PsoHudOverlay(): JSX.Element {
             )}
 
             {/* 2. TOP-LEFT PSO EPISODE IV PLAYER GAUGE + COMPACT PARTY VOICE STACK (Visible only in 3D Game, Compact Chat, or Stream Overlay) */}
-            {(isStreamOverlay || isCompactChat || isLobby3dOpen) && !(isCompactChat && isCompactOverlaysHidden) && (
+            {(isStreamOverlay || isCompactChat || isLobby3dOpen) &&
+                !(isCompactChat && isCompactOverlaysHidden) &&
+                !isFullGameMenuOpen &&
+                placeInLobbyViewport(
                 <div
                     className={classNames("pso-ep4-party-hud-stack pso-interactive", {
-                        "pso-ep4-party-hud-stack--in-lobby": isLobby3dOpen && !isCompactChat && !isStreamOverlay,
+                        "pso-ep4-party-hud-stack--in-lobby": isHudInLobbyViewport,
                     })}
                     data-testid="pso-status-hud"
                     onMouseEnter={onHudMouseEnter}
@@ -2683,15 +2708,17 @@ export function PsoHudOverlay(): JSX.Element {
                 />
             )}
 
-            {/* 3D. EXTRACTED PSOBB FULL GAME MENU (`F12` Main Menu + `F1`–`F11` Function Key Bar) */}
+            {/* 3D. PSOBB MAIN MENU (`F12`) — inside the lobby viewport when the lobby is open, otherwise full window */}
+            <PsoFunctionKeyBar visible={showFunctionKeyBar} onPressKey={pressFunctionKey} />
+            {(() => {
+                const menu = (
             <PsoFullGameMenu
                 isOpen={isFullGameMenuOpen}
-                activeTab={activeGameMenuTab}
+                request={gameMenuRequest}
                 showFunctionKeyBar={showFunctionKeyBar}
                 onToggleOpen={(nextOpen) =>
                     setIsFullGameMenuOpen((prev) => (typeof nextOpen === "boolean" ? nextOpen : !prev))
                 }
-                onSelectTab={(tab) => setActiveGameMenuTab(tab)}
                 onToggleFunctionKeyBar={toggleFunctionKeyBar}
                 displayName={profile.displayName}
                 userId={profile.userId || "@hunter:pioneer2"}
@@ -2869,10 +2896,24 @@ export function PsoHudOverlay(): JSX.Element {
                 onMouseEnter={onHudMouseEnter}
                 onMouseLeave={onHudMouseLeave}
             />
+                );
+                if (isLobby3dOpen && lobbyViewportEl) return createPortal(menu, lobbyViewportEl);
+                return (
+                    <div
+                        className={classNames("pso-gm-host", {
+                            "pso-gm-host--open pso-interactive": isFullGameMenuOpen,
+                        })}
+                    >
+                        {menu}
+                    </div>
+                );
+            })()}
 
             {/* 3C. EMBEDDED 3D WEBGL PSO PIONEER 2 LOBBY + MINIGAME + RESHADE + .NJ ASSET LOADER */}
             {isLobby3dOpen && (
                 <PsoLobby3dLayer
+                    onViewportElementChange={setLobbyViewportEl}
+                    isInputSuspended={isFullGameMenuOpen}
                     localDisplayName={profile.displayName}
                     localUserId={client?.getUserId() || "self"}
                     activeSymbolChat={

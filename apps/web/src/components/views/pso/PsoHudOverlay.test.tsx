@@ -9,7 +9,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "test-utils-rtl";
+import { render, screen, waitFor } from "test-utils-rtl";
 import userEvent from "@testing-library/user-event";
 import { stubClient, TestSDKContext, wrapInSdkContext } from "test-utils";
 
@@ -91,26 +91,47 @@ describe("PsoHudOverlay", () => {
         expect(screen.getByText(/HUD & Wallpaper Tuner/i)).toBeInTheDocument();
     });
 
-    it("opens the extracted PSOBB F12 Full Game Menu and navigates between Item Pack, Technique, Mag, Status, and Guild Card", async () => {
+    it("opens the PSOBB main menu with F12 and drives it with the keyboard", async () => {
         const PsoHudOverlay = wrapInSdkContext(UnwrappedPsoHudOverlay, sdkContext);
         render(<PsoHudOverlay />);
 
         expect(screen.queryByTestId("pso-full-game-menu")).toBeNull();
 
-        await userEvent.click(screen.getByTestId("pso-titlebar-game-menu-btn"));
+        await userEvent.keyboard("{F12}");
         expect(screen.getByTestId("pso-full-game-menu")).toBeInTheDocument();
-        expect(screen.getAllByText(/MAIN MENU/i).length).toBeGreaterThan(0);
+        expect(document.body).toHaveClass("pso-gamemenu-open");
+        expect(screen.getByTestId("pso-gm-help")).toHaveTextContent("Equip weapons or use items here.");
 
-        // Navigate to Technique tab (`F3`)
-        await userEvent.click(screen.getByTestId("pso-gamemenu-tab-technique"));
-        expect(screen.getByText(/LEARNED PSOBB TECHNIQUES/i)).toBeInTheDocument();
+        // Rows are revealed one at a time by the opening animation.
+        expect(await screen.findByTestId("pso-gamemenu-tab-quit")).toBeInTheDocument();
+        expect(screen.getByTestId("pso-gamemenu-tab-item_pack")).toHaveClass("pso-gm-row--active");
 
-        // Navigate to Status tab (`F10`)
-        await userEvent.click(screen.getByTestId("pso-gamemenu-tab-status"));
-        expect(screen.getByText(/MATRIX HOMESERVER PING/i)).toBeInTheDocument();
+        await userEvent.keyboard("{ArrowDown}");
+        expect(screen.getByTestId("pso-gamemenu-tab-customize")).toHaveClass("pso-gm-row--active");
+        await userEvent.keyboard("{ArrowUp}{Enter}");
+        expect(screen.getByTestId("pso-gm-sub-menu")).toBeInTheDocument();
+        await userEvent.keyboard("{Enter}");
+        expect(screen.getByTestId("pso-gm-detail-equip")).toBeInTheDocument();
 
-        // Close Full Game Menu
-        await userEvent.click(screen.getByTestId("pso-full-game-menu-close"));
-        expect(screen.queryByTestId("pso-full-game-menu")).toBeNull();
+        expect(screen.getByTestId("pso-gm-status-page")).toHaveTextContent("1/7");
+        await userEvent.click(screen.getByTestId("pso-gm-status-next"));
+        expect(screen.getByTestId("pso-gm-status-page")).toHaveTextContent("2/7");
+
+        await userEvent.keyboard("{Escape}{Escape}");
+        expect(screen.queryByTestId("pso-gm-sub-menu")).toBeNull();
+        await userEvent.keyboard("{Escape}");
+        await waitFor(() => expect(screen.queryByTestId("pso-full-game-menu")).toBeNull());
+        expect(document.body).not.toHaveClass("pso-gamemenu-open");
+    });
+
+    it("opens the menu at a section from the function key bar", async () => {
+        localStorage.setItem("pso_hud_show_fkey_bar", "true");
+        const PsoHudOverlay = wrapInSdkContext(UnwrappedPsoHudOverlay, sdkContext);
+        render(<PsoHudOverlay />);
+
+        expect(screen.getByTestId("pso-fkey-strip")).toBeInTheDocument();
+        await userEvent.keyboard("{F3}");
+        expect(await screen.findByTestId("pso-gm-detail-technique")).toBeInTheDocument();
+        expect(screen.getByText("Foie")).toBeInTheDocument();
     });
 });

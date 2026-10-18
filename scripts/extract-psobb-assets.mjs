@@ -882,230 +882,89 @@ function parseUnitxtPrsCategories(unitxtBuf) {
 function buildCompiledUiMenuSpec(unitxtCategories) {
     const getCat = (c) => (Array.isArray(unitxtCategories[c]) ? unitxtCategories[c] : []);
     const getStr = (c, idx, fallback) => {
-        const arr = getCat(c);
-        return arr[idx] && arr[idx].length > 0 ? arr[idx] : fallback;
+        const s = getCat(c)[idx];
+        return typeof s === "string" && s.length > 0 ? s : fallback;
     };
 
-    const c1 = getCat(1);
-    const c3 = getCat(3);
-    const c5 = getCat(5);
-    const c6 = getCat(6);
-    const c8 = getCat(8);
-    const c10 = getCat(10);
-    const c72 = getCat(72);
+    // `unitxt_e.prs` Cat[11]: 0..47 are the main-menu help lines, 153..166 the status window labels,
+    // 192..194 the Mag window labels, 353..364 the function key labels.
+    const helpTexts = {
+        customize: getStr(11, 0, ""),
+        item_pack: getStr(11, 2, ""),
+        technique: getStr(11, 3, ""),
+        chat: getStr(11, 5, ""),
+        options: getStr(11, 6, ""),
+        quit_offline: getStr(11, 7, ""),
+        quit_online: getStr(11, 8, ""),
+        equip: getStr(11, 9, ""),
+        use_items: getStr(11, 11, ""),
+        area_map: getStr(11, 12, ""),
+        guild_card: getStr(11, 14, ""),
+        shortcuts: getStr(11, 17, ""),
+        symbol_chat: getStr(11, 18, ""),
+        simple_mail: getStr(11, 19, ""),
+        log_window: getStr(11, 21, ""),
+        mag: getStr(11, 23, ""),
+        status: getStr(11, 25, ""),
+        team_setup: getStr(11, 35, ""),
+        team_list: getStr(11, 37, ""),
+        team_log: getStr(11, 39, ""),
+        team_info: getStr(11, 43, ""),
+    };
 
-    // Function Key Bar F1-F12 (`Cat[11][353..364]`)
-    const functionKeyLabels = [
-        { key: "F1", rawLabel: getStr(11, 353, "F1: Function Key ON/OFF Display"), actionId: "toggle_fkeys" },
-        { key: "F2", rawLabel: getStr(11, 354, "F2 : Equip"), actionId: "item_pack" },
-        { key: "F3", rawLabel: getStr(11, 355, "F3 : Technique"), actionId: "technique" },
-        { key: "F4", rawLabel: getStr(11, 356, "F4 : Mag"), actionId: "mag" },
-        { key: "F5", rawLabel: getStr(11, 357, "F5 : Check the Guild Card"), actionId: "guild_card" },
-        { key: "F6", rawLabel: getStr(11, 358, "F6 : Simple Mail"), actionId: "simple_mail" },
-        { key: "F7", rawLabel: getStr(11, 359, "F7 : Symbol Chat"), actionId: "symbol_chat" },
-        { key: "F8", rawLabel: getStr(11, 360, "F8 : Team Member List"), actionId: "team_list" },
-        { key: "F9", rawLabel: getStr(11, 361, "F9 : Team Log"), actionId: "team_log" },
-        { key: "F10", rawLabel: getStr(11, 362, "F10 : Status & Area Map"), actionId: "status_map" },
-        { key: "F11", rawLabel: getStr(11, 363, "F11 : Quick Chat"), actionId: "chat_menu" },
-        { key: "F12", rawLabel: getStr(11, 364, "F12 : Main Menu"), actionId: "main_menu" },
-    ];
-
-    // Cascading Main Menu Top-Level Categories (`Cat[11]` + `Cat[15]` + `Cat[16]`)
-    const mainMenuTabs = [
-        {
-            id: "item_pack",
-            label: "Item Pack",
-            shortcut: "F2",
-            helpText: getStr(11, 0, "View, equip, and use items in your Item Pack."),
-            subItems: [
-                { id: "equip_weapons", label: getStr(11, 354, "Equip / Weapons").replace(/^F2\s*:\s*/i, ""), helpText: getStr(11, 2, "Equip weapons, frames, barriers, and units.") },
-                { id: "use_tools", label: "Use / Recovery Items", helpText: getStr(11, 1, "Use recovery items and support tools.") },
-                { id: "rare_drops", label: "Rare Drop Tekker Box", helpText: getStr(11, 3, "Inspect special weapons & rare red-box drops.") },
-            ],
-        },
-        {
-            id: "technique",
-            label: getStr(11, 355, "Technique").replace(/^F3\s*:\s*/i, ""),
-            shortcut: "F3",
-            helpText: getStr(11, 4, "View and cast learned Techniques."),
-            subItems: [
-                { id: "tech_attack", label: "Attack Techniques (Foie / Barta / Zonde)", helpText: getStr(11, 5, "Cast offensive elemental techniques in the 3D lobby.") },
-                { id: "tech_support", label: "Support & Recovery (Resta / Shifta / Deband)", helpText: getStr(11, 6, "Cast party healing, buffs, and telepipes.") },
-            ],
-        },
-        {
-            id: "mag",
-            label: getStr(11, 356, "Mag").replace(/^F4\s*:\s*/i, ""),
-            shortcut: "F4",
-            helpText: getStr(11, 7, "Check MAG status, Synchro, IQ, and feed items."),
-            subItems: [
-                { id: "mag_feed", label: getStr(11, 56, "Give Items"), helpText: getStr(11, 8, "Feed Monomate, Dimate, Trimate, or Fluids to raise MAG stats.") },
-                { id: "mag_pb", label: getStr(11, 61, "Photon Blast"), helpText: "View equipped Photon Blasts and trigger a burst." },
-            ],
-        },
-        {
-            id: "status",
-            label: "Status",
-            shortcut: "F10",
-            helpText: "Inspect Hunter parameters, Section ID, resists, and Matrix Comms telemetry.",
-            subItems: [
-                { id: "status_hunter", label: "Hunter Parameters & Resists", helpText: "View ATP, DFP, MST, ATA, EVP, LCK, and elemental resistances." },
-                { id: "status_comms", label: "Pioneer 2 Matrix Telemetry", helpText: "Inspect Matrix Homeserver ping, LiveKit voice link, and 3D lobby room." },
-            ],
-        },
-        {
-            id: "quest",
-            label: getStr(15, 52, "Quest"),
-            shortcut: "MAP",
-            helpText: getStr(11, 9, "Warp between Ragol areas, Pioneer 2 counters, and Seasonal NPC events."),
-            subItems: [
-                { id: "warp_areas", label: "Ragol & Pioneer 2 Area Warp", helpText: "Teleport directly between Pioneer 2 City, Visual Lobby, Lab, Forest, Caves, Mines & Ruins." },
-                { id: "npc_layouts", label: "Pioneer 2 Seasonal NPC Layouts", helpText: "Switch between Standard, Spring, Offline Guild, and Valentine NPC placements." },
-            ],
-        },
-        {
-            id: "guild_card",
-            label: "Guild Card",
-            shortcut: "F5",
-            helpText: getStr(11, 10, "Manage Hunter Guild Cards, Matrix Room Contacts, and Simple Mail."),
-            subItems: [
-                { id: "card_list", label: getStr(11, 93, "Search") + " / " + getStr(11, 92, "Card List"), helpText: getStr(11, 14, "Browse fellow Hunters in your Matrix rooms, Meet the User, or Send Mail.") },
-                { id: "my_card", label: getStr(11, 91, "MY Card"), helpText: getStr(11, 15, "View and edit your personal Hunter Guild Card & comment.") },
-                { id: "simple_mail", label: getStr(11, 358, "Simple Mail").replace(/^F6\s*:\s*/i, ""), helpText: getStr(11, 16, "Send a direct Matrix Simple Mail or jump to chat composer.") },
-            ],
-        },
-        {
-            id: "chat",
-            label: "Chat",
-            shortcut: "F7",
-            helpText: getStr(11, 11, "Symbol Chat, Word Select, Action Palette, and Function Key Bar."),
-            subItems: [
-                { id: "symbol_chat", label: getStr(11, 359, "Symbol Chat").replace(/^F7\s*:\s*/i, ""), helpText: getStr(11, 21, "Broadcast or edit multi-layer PSOBB Symbol Chats with sound effects.") },
-                { id: "action_palette", label: "Customize Action Palette (1-0)", helpText: "Configure the bottom Episode IV Hexagonal Action Palette." },
-                { id: "fkey_bar", label: getStr(11, 353, "F1: Function Key ON/OFF Display"), helpText: "Toggle the top PSOBB F1-F12 Function Key bar." },
-            ],
-        },
-        {
-            id: "team",
-            label: getStr(15, 86, "Team"),
-            shortcut: "F8",
-            helpText: getStr(11, 46, "Matrix Room Party, LiveKit Voice Comms, Screen Share, and Team Log."),
-            subItems: [
-                { id: "team_list", label: getStr(11, 360, "Team Member List").replace(/^F8\s*:\s*/i, ""), helpText: getStr(11, 43, "Inspect current Matrix room & Voice Call party roster, Mute/Deafen, and Screen Share.") },
-                { id: "team_log", label: getStr(11, 361, "Team Log").replace(/^F9\s*:\s*/i, ""), helpText: getStr(11, 44, "Toggle the Compact PSO Chat Log & Top-Left Party Voice HUD.") },
-            ],
-        },
-        {
-            id: "option",
-            label: getStr(11, 121, "Option"),
-            shortcut: "OPT",
-            helpText: getStr(11, 12, "Configure Sound, BGM Disk, 3D ReShade Shaders, and HUD Glass Tuner."),
-            subItems: [
-                { id: "opt_sound", label: getStr(16, 1, "Sound") + " & BGM Disk", helpText: getStr(11, 28, "Adjust PSOBB BGM track, volume, and synthesized UI sound effects.") },
-                { id: "opt_graphics", label: "3D ReShade & Camera Rig", helpText: "Configure SMAA, Bloom, Vibrance, LumaSharpen, and 3D Lobby Camera FOV." },
-                { id: "opt_hud", label: getStr(16, 2, "Network Option") + " & HUD Glass", helpText: "Adjust HUD Glass Opacity, Scanlines, Click-Through Mode, and Stream Overlay." },
-            ],
-        },
-        {
-            id: "quit",
-            label: "Quit Game",
-            shortcut: "ESC",
-            helpText: getStr(11, 13, "Close the 3D Visual Lobby or return to the standard Matrix Comm-Link."),
-            subItems: [
-                { id: "quit_menu", label: "Close Main Menu [F12]", helpText: "Return to active Pioneer 2 view." },
-                { id: "quit_lobby", label: "Exit 3D Visual Lobby", helpText: "Close the 3D Visual Lobby and return to 2D Matrix chat." },
-            ],
-        },
-    ];
-
-    const techniques = [];
-    for (let i = 0; i < Math.min(c5.length, 19); i++) {
-        if (c5[i]) {
-            techniques.push({
-                id: `tech_${i}`,
-                name: c5[i],
-                description: c6[i] || `Cast ${c5[i]} technique.`,
-                tpCost: 5 + (i % 5) * 4,
-            });
-        }
+    const functionKeyLabels = [];
+    for (let i = 0; i < 12; i++) {
+        functionKeyLabels.push(getStr(11, 353 + i, `F${i + 1}`));
     }
 
-    const coreItems = [];
-    const itemIndices = [
-        1, 2, 3, 4, 5, 6, 7, 13, 21, 29, 43, 53, 63, 73, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198,
-    ];
-    for (const idx of itemIndices) {
-        if (c1[idx]) {
-            coreItems.push({
-                id: `item_${idx}`,
-                name: c1[idx],
-                description: c3[idx] || "Pioneer 2 Hunter supply item.",
-            });
-        }
+    const techNames = getCat(5).slice(0, 19);
+    const techDescs = getCat(6);
+    const techniques = techNames
+        .map((name, i) => ({ id: `tech_${i}`, name, description: techDescs[i] || "" }))
+        .filter((t) => t.name);
+
+    // Cat[1] 0..12 are the stackable tools (Monomate .. Trap Vision).
+    const itemNames = getCat(1);
+    const itemDescs = getCat(3);
+    const toolItems = [];
+    for (let i = 0; i <= 12; i++) {
+        if (itemNames[i]) toolItems.push({ id: `tool_${i}`, name: itemNames[i], description: itemDescs[i] || "" });
     }
 
     return {
+        uiSpecVersion: 2,
         functionKeyLabels,
-        mainMenuTabs,
+        helpTexts,
         statLabels: {
-            atp: getStr(11, 48, "ATP"),
-            dfp: getStr(11, 49, "DFP"),
-            mst: getStr(11, 50, "MST"),
-            ata: getStr(11, 51, "ATA"),
-            evp: getStr(11, 52, "EVP"),
-            lck: getStr(11, 53, "LCK"),
-            level: getStr(11, 54, "LEVEL"),
-            exp: getStr(11, 55, "EXP"),
-            synchro: getStr(11, 58, "Synchro"),
-            iq: getStr(11, 59, "IQ"),
-            efr: getStr(11, 63, "EFR"),
-            eic: getStr(11, 64, "EIC"),
-            eth: getStr(11, 65, "ETH"),
-            edk: getStr(11, 66, "EDK"),
-            elt: getStr(11, 67, "ELT"),
-            nextLevel: getStr(11, 68, "NEXT LEVEL"),
-            meseta: getStr(11, 69, "Meseta"),
+            totalExp: getStr(11, 153, "Total EXP"),
+            toNextLv: getStr(11, 154, "To Next Lv"),
+            money: getStr(11, 155, "Money"),
+            atp: getStr(11, 156, "ATP"),
+            dfp: getStr(11, 157, "DFP"),
+            mst: getStr(11, 158, "MST"),
+            ata: getStr(11, 159, "ATA"),
+            evp: getStr(11, 160, "EVP"),
+            lck: getStr(11, 161, "LCK"),
+            efr: getStr(11, 162, "EFR"),
+            eic: getStr(11, 163, "EIC"),
+            eth: getStr(11, 164, "ETH"),
+            edk: getStr(11, 165, "EDK"),
+            elt: getStr(11, 166, "ELT"),
+            magLevel: getStr(11, 192, "Level"),
+            synchro: getStr(11, 193, "Synchro"),
+            iq: getStr(11, 194, "IQ"),
+            meseta: getStr(12, 0, "Meseta"),
         },
-        guildCardLabels: {
-            cardString: getStr(11, 90, "Card"),
-            myCard: getStr(11, 91, "MY Card"),
-            cardList: getStr(11, 92, "Card List"),
-            search: getStr(11, 93, "Search"),
-            sendCard: getStr(11, 94, "Send Card"),
-            meetUser: getStr(11, 95, "Meet the User"),
-            deleteCard: getStr(11, 96, "Delete"),
-            editComment: getStr(11, 97, "Comment"),
-            sortOrder: getStr(11, 98, "Order"),
-            sendMail: getStr(11, 108, "Send Mail"),
-        },
-        classNames: c8.length >= 12 ? c8.slice(0, 12) : [
-            "HUmar", "HUnewearl", "HUcast", "RAmar", "RAcast", "RAcaseal",
-            "FOmarl", "FOnewm", "FOnewearl", "HUcaseal", "FOmar", "RAmarl",
-        ],
-        sectionIds: c72.length >= 10 ? c72.slice(0, 10) : [
-            "VIRIDIA", "GREENILL", "SKYLY", "BLUEFULL", "PURPLENUM",
-            "PINKAL", "REDRIA", "ORAN", "YELLOWBOZE", "WHITILL",
-        ],
-        areaNames: c10.length > 0 ? c10.filter(Boolean).slice(0, 26) : [
-            "PIONEER 2", "FOREST 1", "FOREST 2", "CAVE 1", "CAVE 2",
-            "MINE 1", "MINE 2", "RUINS 1", "RUINS 2", "RUINS 3", "LAB",
-        ],
+        classNames: getCat(8).slice(0, 12),
+        sectionIds: getCat(72).slice(0, 10),
         techniques,
-        coreItems,
+        toolItems,
         uiXvmSheets: {
             hudGauges: "media/pso/ui/f256_hyouji.xvm",
-            hudGaugesSmall: "media/pso/ui/f256_hyoujismall.xvm",
-            playerPlate: "media/pso/ui/f256_player_prate.xvm",
-            playerTexEng: "media/pso/ui/f256_player_tex_eng.xvm",
-            selectFrameEng: "media/pso/ui/f256_selectgamen_a_eng.xvm",
-            headerBannersEng: "media/pso/ui/f512_midashi_eng.xvm",
-            unitIcons: "media/pso/ui/f256_uniticon.xvm",
             cursorsAndSectionIds: "media/pso/ui/f064_mucarsol.xvm",
-            confirmPrompt: "media/pso/ui/f064_multiconfirm.xvm",
+            unitIcons: "media/pso/ui/f256_uniticon.xvm",
             consoleChrome: "media/pso/ui/ccconsole_e.xvm",
             mainUiTex: "media/pso/ui/texture_e.xvm",
-            infoIcons: "media/pso/ui/infoicon.xvm",
-            radarFrame: "media/pso/ui/radermapframe.xvm",
         },
     };
 }

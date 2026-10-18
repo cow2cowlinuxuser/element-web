@@ -8,15 +8,14 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import classNames from "classnames";
 
 import {
-    FALLBACK_PROCEDURAL_GAME_PACK,
     loadCompiledGamePack,
-    loadPsoUiXvmSheet,
-    type PsoCompiledGamePack,
-    type PsoDecodedXvrTexture,
+    loadPsoUiSprite,
+    type PsoCompiledUiEntry,
+    type PsoCompiledUiMenuSpec,
 } from "./PsoGamePackLoader";
 import type {
     PsoBgmTrackId,
@@ -27,17 +26,31 @@ import type {
     PsoWeaponModelId,
 } from "./PsoLobby3dLayer";
 
-export type PsoMainMenuTabId =
-    | "item_pack"
+/** The six entries of the PSOBB in-game main menu (top-left box). */
+export type PsoMainMenuTabId = "item_pack" | "customize" | "chat" | "team" | "options" | "quit";
+
+export type PsoMenuSectionId =
+    | "equip"
+    | "use_items"
     | "technique"
     | "mag"
-    | "status"
-    | "quest"
-    | "guild_card"
-    | "chat"
-    | "team"
-    | "option"
-    | "quit";
+    | "rare_drops"
+    | "hunter_class"
+    | "area_warp"
+    | "npc_layout"
+    | "guild_cards"
+    | "my_card"
+    | "simple_mail"
+    | "team_list"
+    | "sound_bgm"
+    | "display";
+
+/** Opens the menu straight onto a tab / section (used by the F-key bar). `nonce` makes repeat requests distinct. */
+export interface PsoGameMenuRequest {
+    tab: PsoMainMenuTabId;
+    section: PsoMenuSectionId | null;
+    nonce: number;
+}
 
 export interface PsoPartyMemberSummary {
     userId: string;
@@ -50,15 +63,15 @@ export interface PsoPartyMemberSummary {
     tpPct: number;
 }
 
+export type PsoUiSoundKind = "cursor" | "confirm" | "cancel" | "heal" | "tech";
+
 export interface PsoFullGameMenuProps {
     isOpen: boolean;
-    activeTab: PsoMainMenuTabId;
-    showFunctionKeyBar: boolean;
+    request: PsoGameMenuRequest | null;
     onToggleOpen: (nextOpen?: boolean) => void;
-    onSelectTab: (tab: PsoMainMenuTabId) => void;
+    showFunctionKeyBar: boolean;
     onToggleFunctionKeyBar: () => void;
 
-    // Live Hunter & Matrix Profile
     displayName: string;
     userId: string;
     classNameLabel: string;
@@ -74,7 +87,6 @@ export interface PsoFullGameMenuProps {
     pingMs: number;
     shipName: string;
 
-    // Live 3D Lobby & Equipment Bridge
     isLobby3dOpen: boolean;
     currentStageId: PsoLobbyStageId;
     currentClassId: PsoClassModelId;
@@ -90,7 +102,6 @@ export interface PsoFullGameMenuProps {
     onCastTechnique: (techName: string, tpCost: number) => void;
     onUseConsumerItem: (itemName: string) => void;
 
-    // Matrix Rooms, Guild Cards, Voice & Chat Actions
     guildRooms: PsoGuildRoomEntry[];
     partyMembers: PsoPartyMemberSummary[];
     isVoiceActive: boolean;
@@ -109,104 +120,190 @@ export interface PsoFullGameMenuProps {
     onToggleCompactChat: () => void;
     onToggleClickThroughGlass: () => void;
     onToggleStreamOverlay: () => void;
-    onPlayUiSound: (kind: "cursor" | "confirm" | "cancel" | "heal" | "tech") => void;
+    onPlayUiSound: (kind: PsoUiSoundKind) => void;
     onMouseEnter?: () => void;
     onMouseLeave?: () => void;
 }
 
-const WEAPON_ARSENAL: Array<{
-    id: PsoWeaponModelId;
-    name: string;
-    stars: string;
-    atpBonus: number;
-    ataBonus: number;
-    desc: string;
-}> = [
+type SubAction = "symbol_chat" | "action_palette" | "function_keys" | "team_log" | "resume" | "exit_lobby";
+
+interface SubMenuItem {
+    label: string;
+    helpKey: string;
+    fallbackHelp: string;
+    section?: PsoMenuSectionId;
+    action?: SubAction;
+}
+
+interface MainMenuItem {
+    id: PsoMainMenuTabId;
+    label: string;
+    helpKey: string;
+    fallbackHelp: string;
+    items: SubMenuItem[];
+}
+
+/*
+ * The main-menu labels are not stored as plain strings in the client data, so they are spelled out here.
+ * Help lines come from unitxt (category 11) when a v2 game pack is available.
+ */
+const MAIN_MENU: MainMenuItem[] = [
     {
-        id: "photon_saber",
-        name: "DB'S SABER +35",
-        stars: "★★★★★★★★★",
-        atpBonus: 260,
-        ataBonus: 42,
-        desc: "Standard-issue Pioneer 2 military photon blade replicated for high-ranking Hunters.",
+        id: "item_pack",
+        label: "Item Pack",
+        helpKey: "item_pack",
+        fallbackHelp: "Equip weapons or use items here.",
+        items: [
+            { label: "Equip", section: "equip", helpKey: "equip", fallbackHelp: "Equip weapons, armor and units." },
+            { label: "Use Items", section: "use_items", helpKey: "use_items", fallbackHelp: "Use recovery items." },
+            { label: "Technique", section: "technique", helpKey: "technique", fallbackHelp: "Cast techniques." },
+            { label: "Mag", section: "mag", helpKey: "mag", fallbackHelp: "Check your Mag's status." },
+            { label: "Rare Drops", section: "rare_drops", helpKey: "", fallbackHelp: "Review rare items found." },
+        ],
     },
     {
-        id: "red_sword",
-        name: "RED SWORD +52",
-        stars: "★★★★★★★★★★",
-        atpBonus: 612,
-        ataBonus: 38,
-        desc: "A crimson greatsword forged by Heathcliff Flowen. Bears the inscription 'Rico'.",
+        id: "customize",
+        label: "Customize",
+        helpKey: "customize",
+        fallbackHelp: "Customize your character and controls.",
+        items: [
+            { label: "Action Palette", action: "action_palette", helpKey: "shortcuts", fallbackHelp: "Arrange the HUD and action palette." },
+            { label: "Function Keys", action: "function_keys", helpKey: "", fallbackHelp: "Show or hide the F-key bar." },
+            { label: "Hunter Class", section: "hunter_class", helpKey: "", fallbackHelp: "Change your hunter's class model." },
+            { label: "Area Warp", section: "area_warp", helpKey: "area_map", fallbackHelp: "Warp to another area." },
+            { label: "NPC Layout", section: "npc_layout", helpKey: "", fallbackHelp: "Choose the city event layout." },
+        ],
     },
     {
-        id: "dark_flow",
-        name: "DARK FLOW",
-        stars: "★★★★★★★★★★★★",
-        atpBonus: 900,
-        ataBonus: 50,
-        desc: "An abyssal greatsword fused with parasitic gene 'Flow'. Unleashes devastating photon waves.",
+        id: "chat",
+        label: "Chat",
+        helpKey: "chat",
+        fallbackHelp: "Communicate with other players.",
+        items: [
+            { label: "Symbol Chat", action: "symbol_chat", helpKey: "symbol_chat", fallbackHelp: "Create and send Symbol Chats." },
+            { label: "Guild Card", section: "guild_cards", helpKey: "guild_card", fallbackHelp: "Browse your Guild Cards (Matrix rooms)." },
+            { label: "My Card", section: "my_card", helpKey: "", fallbackHelp: "View your own Guild Card." },
+            { label: "Simple Mail", section: "simple_mail", helpKey: "simple_mail", fallbackHelp: "Send Simple Mail." },
+        ],
     },
     {
-        id: "kingdom_key",
-        name: "KINGDOM KEY [KH]",
-        stars: "★★★★★★★★★★★",
-        atpBonus: 540,
-        ataBonus: 55,
-        desc: "Keyblade of the Realm of Light with authentic metallic key-teeth and Mickey keychain token.",
+        id: "team",
+        label: "Team",
+        helpKey: "team_setup",
+        fallbackHelp: "Team functions.",
+        items: [
+            { label: "Team List", section: "team_list", helpKey: "team_list", fallbackHelp: "View team members and voice." },
+            { label: "Team Log", action: "team_log", helpKey: "team_log", fallbackHelp: "Toggle the compact chat log." },
+        ],
     },
     {
-        id: "oathkeeper",
-        name: "OATHKEEPER [KH]",
-        stars: "★★★★★★★★★★★★",
-        atpBonus: 680,
-        ataBonus: 62,
-        desc: "Iridescent Keyblade born of a promise. Boosts Technique MST and Shifta/Deband resonance.",
+        id: "options",
+        label: "Options",
+        helpKey: "options",
+        fallbackHelp: "Change game settings.",
+        items: [
+            { label: "Sound", section: "sound_bgm", helpKey: "", fallbackHelp: "Change the background music." },
+            { label: "Display", section: "display", helpKey: "", fallbackHelp: "HUD glass and overlay settings." },
+        ],
+    },
+    {
+        id: "quit",
+        label: "Quit Game",
+        helpKey: "quit_online",
+        fallbackHelp: "Quit the game.",
+        items: [
+            { label: "Resume", action: "resume", helpKey: "", fallbackHelp: "Return to the game." },
+            { label: "Exit Lobby", action: "exit_lobby", helpKey: "quit_online", fallbackHelp: "Leave the 3D lobby." },
+        ],
     },
 ];
 
-const STAGE_OPTIONS: Array<{ id: PsoLobbyStageId; name: string; areaCode: string; desc: string }> = [
-    {
-        id: "bb_city00",
-        name: "PIONEER 2 CITY & PRINCIPAL",
-        areaCode: "map_city00_00n.rel",
-        desc: "Full Pioneer 2 Concourse, Hunter's Guild, Medical Center, Check Room, Shopping Plaza & Principal Tyrell's Office.",
-    },
-    {
-        id: "bb_lobby_01",
-        name: "VISUAL LOBBY 01",
-        areaCode: "map_lobby_01n.rel",
-        desc: "PSOBB Ship Block Visual Lobby with photon chairs and central warp dais.",
-    },
-    {
-        id: "bb_labo00",
-        name: "EPISODE II LAB (NATASHA)",
-        areaCode: "map_labo00_00n.rel",
-        desc: "Pioneer 2 VR Temple & Labo research command center.",
-    },
-    {
-        id: "bb_forest01",
-        name: "RAGOL AREA 1 // FOREST 1",
-        areaCode: "map_forest01n.rel",
-        desc: "Central Dome perimeter forest on surface of Ragol.",
-    },
-    {
-        id: "bb_cave01",
-        name: "RAGOL AREA 2 // CAVE 1",
-        areaCode: "map_cave01_00n.rel",
-        desc: "Volcanic subterranean caverns beneath the Central Dome.",
-    },
-    {
-        id: "bb_machine01",
-        name: "RAGOL AREA 3 // MINE 1",
-        areaCode: "map_machine01_00n.rel",
-        desc: "Automated underground Pioneer 1 mining complex.",
-    },
-    {
-        id: "bb_ruins01",
-        name: "RAGOL AREA 4 // RUINS 1",
-        areaCode: "map_ruins01_00n.rel",
-        desc: "Ancient sealed spacecraft beneath the Ragol Mines.",
-    },
+const FALLBACK_STAT_LABELS: PsoCompiledUiMenuSpec["statLabels"] = {
+    totalExp: "Total Exp",
+    toNextLv: "To Next Lv",
+    money: "Money",
+    atp: "ATP",
+    dfp: "DFP",
+    mst: "MST",
+    ata: "ATA",
+    evp: "EVP",
+    lck: "LCK",
+    efr: "EFR",
+    eic: "EIC",
+    eth: "ETH",
+    edk: "EDK",
+    elt: "ELT",
+    magLevel: "Level",
+    synchro: "Synchro",
+    iq: "IQ",
+    meseta: "Meseta",
+};
+
+const FALLBACK_TECHNIQUES: PsoCompiledUiEntry[] = [
+    "Foie",
+    "Gifoie",
+    "Rafoie",
+    "Barta",
+    "Gibarta",
+    "Rabarta",
+    "Zonde",
+    "Gizonde",
+    "Razonde",
+    "Grants",
+    "Deband",
+    "Jellen",
+    "Zalure",
+    "Shifta",
+    "Ryuker",
+    "Resta",
+    "Anti",
+    "Reverser",
+    "Megid",
+].map((name) => ({ id: name.toLowerCase(), name, description: "" }));
+
+const FALLBACK_TOOLS: PsoCompiledUiEntry[] = ["Monomate", "Dimate", "Trimate", "Monofluid", "Difluid", "Trifluid", "Antidote", "Antiparalysis", "Telepipe"].map(
+    (name) => ({ id: name.toLowerCase(), name, description: "" }),
+);
+
+const TECH_TP_COST: Record<string, number> = {
+    foie: 5,
+    gifoie: 15,
+    rafoie: 20,
+    barta: 6,
+    gibarta: 16,
+    rabarta: 22,
+    zonde: 7,
+    gizonde: 17,
+    razonde: 24,
+    grants: 30,
+    deband: 10,
+    jellen: 10,
+    zalure: 10,
+    shifta: 10,
+    ryuker: 10,
+    resta: 15,
+    anti: 8,
+    reverser: 30,
+    megid: 30,
+};
+
+const WEAPON_ARSENAL: Array<{ id: PsoWeaponModelId; name: string; atp: number; ata: number; desc: string }> = [
+    { id: "photon_saber", name: "Saber +35", atp: 260, ata: 42, desc: "Standard-issue Pioneer 2 photon blade." },
+    { id: "red_sword", name: "Red Sword +52", atp: 612, ata: 38, desc: "A crimson greatsword bearing the inscription 'Rico'." },
+    { id: "dark_flow", name: "Dark Flow", atp: 900, ata: 50, desc: "An abyssal greatsword fused with a parasitic gene." },
+    { id: "kingdom_key", name: "Kingdom Key", atp: 540, ata: 55, desc: "Keyblade of the Realm of Light." },
+    { id: "oathkeeper", name: "Oathkeeper", atp: 680, ata: 62, desc: "Iridescent Keyblade born of a promise." },
+];
+
+const STAGE_OPTIONS: Array<{ id: PsoLobbyStageId; name: string; desc: string }> = [
+    { id: "bb_city00", name: "Pioneer 2", desc: "City concourse, Hunter's Guild, Medical Center and shops." },
+    { id: "bb_lobby_01", name: "Visual Lobby 01", desc: "Ship block lobby with the central warp dais." },
+    { id: "bb_labo00", name: "Lab", desc: "Episode II research command center." },
+    { id: "bb_forest01", name: "Forest 1", desc: "Central Dome perimeter forest on Ragol." },
+    { id: "bb_cave01", name: "Cave 1", desc: "Volcanic caverns beneath the Central Dome." },
+    { id: "bb_machine01", name: "Mine 1", desc: "Automated Pioneer 1 mining complex." },
+    { id: "bb_ruins01", name: "Ruins 1", desc: "Ancient sealed ship beneath the Mines." },
+    { id: "pioneer2_holodeck", name: "Holodeck", desc: "Procedural training holodeck." },
 ];
 
 const CLASS_OPTIONS: Array<{ id: PsoClassModelId; label: string; race: string }> = [
@@ -224,1367 +321,1105 @@ const CLASS_OPTIONS: Array<{ id: PsoClassModelId; label: string; race: string }>
     { id: "fonewearl", label: "FOnewearl", race: "Newman Female Force" },
 ];
 
-export const PsoFullGameMenu: React.FC<PsoFullGameMenuProps> = ({
-    isOpen,
-    activeTab,
-    showFunctionKeyBar,
-    onToggleOpen,
-    onSelectTab,
-    onToggleFunctionKeyBar,
-    displayName,
-    userId,
-    classNameLabel,
-    sectionIdName,
-    sectionIdColor,
-    level,
-    hp,
-    maxHp,
-    tp,
-    maxTp,
-    meseta,
-    rareDrops,
-    pingMs,
-    shipName,
-    isLobby3dOpen,
-    currentStageId,
-    currentClassId,
-    currentWeaponId,
-    currentBgmTrack,
-    currentNpcLayout,
-    onOpenOrCloseLobby3d,
-    onSelectStage,
-    onSelectClass,
-    onSelectWeapon,
-    onSelectBgmTrack,
-    onSelectNpcLayout,
-    onCastTechnique,
-    onUseConsumerItem,
-    guildRooms,
-    partyMembers,
-    isVoiceActive,
-    isMicMuted,
-    isDeafened,
-    isCompactChat,
-    isClickThroughGlass,
-    isStreamOverlay,
-    onSelectGuildRoom,
-    onSendSimpleMail,
-    onOpenSymbolChatMaker,
-    onOpenHudTuner,
-    onToggleVoiceCall,
-    onToggleMicMute,
-    onToggleDeafen,
-    onToggleCompactChat,
-    onToggleClickThroughGlass,
-    onToggleStreamOverlay,
-    onPlayUiSound,
-    onMouseEnter,
-    onMouseLeave,
-}) => {
-    const [gamePack, setGamePack] = useState<PsoCompiledGamePack>(FALLBACK_PROCEDURAL_GAME_PACK);
-    const [uiSprites, setUiSprites] = useState<{
-        cursors: PsoDecodedXvrTexture[];
-        unitIcons: PsoDecodedXvrTexture[];
-        hudGauges: PsoDecodedXvrTexture[];
-        headerBanners: PsoDecodedXvrTexture[];
-        consoleChrome: PsoDecodedXvrTexture[];
-    }>({
-        cursors: [],
-        unitIcons: [],
-        hudGauges: [],
-        headerBanners: [],
-        consoleChrome: [],
-    });
+const NPC_LAYOUTS: Array<{ id: PsoCityEventLayoutId; label: string }> = [
+    { id: "e", label: "Standard" },
+    { id: "e_s", label: "Spring / Summer event" },
+    { id: "e_d", label: "Winter event" },
+    { id: "e_c1", label: "Seasonal event 1" },
+];
 
-    const [activeSubItemIdx, setActiveSubItemIdx] = useState<number>(0);
-    const [statusBannerMsg, setStatusBannerMsg] = useState<string>("");
+const BGM_TRACKS: Array<{ id: PsoBgmTrackId; label: string }> = [
+    { id: "synth", label: "Synth (procedural)" },
+    { id: "CITY.ogg", label: "City" },
+    { id: "LOBBY.ogg", label: "Lobby" },
+    { id: "GUILD.ogg", label: "Hunter's Guild" },
+    { id: "MEDICAL.ogg", label: "Medical Center" },
+    { id: "SHOP.ogg", label: "Shops" },
+    { id: "LABO.ogg", label: "Lab" },
+    { id: "slbgm_forest.ogg", label: "Forest" },
+];
 
-    // Interactive MAG state persisted in localStorage
-    const [magStats, setMagStats] = useState<{
-        name: string;
-        level: number;
-        synchro: number;
-        iq: number;
-        def: number;
-        pow: number;
-        dex: number;
-        mind: number;
-    }>(() => {
-        try {
-            const raw = localStorage.getItem("mx_pso_mag_stats_v1");
-            if (raw) return JSON.parse(raw);
-        } catch {
-            // ignore
-        }
-        return {
-            name: "SATO [CYAN]",
-            level: 200,
-            synchro: 120,
-            iq: 200,
-            def: 15,
-            pow: 85,
-            dex: 50,
-            mind: 50,
+const STATUS_PAGE_COUNT = 7;
+
+/** Sprite rects (x, y, w, h) inside the extracted `f256_hyouji.xvm` sheet. */
+const SPRITES = {
+    plate: { tex: 13, rect: [0, 0, 228, 76] },
+    menuBox: { tex: 13, rect: [0, 80, 116, 94] },
+    windowFrame: { tex: 1, rect: [0, 0, 96, 96] },
+} as const;
+type SpriteKey = keyof typeof SPRITES;
+
+/*
+ * Layout in PSOBB's 640x480 virtual space; 1 unit = viewport height / 480.
+ * Left-anchored and right-anchored windows mirror how the client keeps the HUD at the screen edges on wide resolutions.
+ */
+const LAYOUT = {
+    plate: { left: 22, top: 30, w: 228, h: 76 },
+    menu: { left: 40, top: 112, w: 128, rowH: 15, pad: 10 },
+    sub: { left: 172, w: 150 },
+    help: { left: 19, top: 315, w: 203, h: 101 },
+    status: { right: 31, top: 256, w: 309, h: 156 },
+    clock: { right: 30, top: 424 },
+    detail: { left: 330, top: 18, right: 18, bottom: 248 },
+    cutout: { left: 162, bottom: 244, radius: 14 },
+} as const;
+
+/* Opening sequence reconstructed from captured frames: rows appear one at a time while the tint rises from below. */
+const ROW_REVEAL_MS = 70;
+const COVER_OPEN_MS = 300;
+const COVER_CLOSE_MS = 180;
+
+function easeOutCubic(t: number): number {
+    return 1 - Math.pow(1 - t, 3);
+}
+
+function formatInternetTime(now: Date): string {
+    const utcSeconds = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+    const beats = Math.floor((((utcSeconds + 3600) % 86400) / 86.4) % 1000);
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}/internet time @ ${String(beats).padStart(3, "0")}`;
+}
+
+function experienceForLevel(level: number): number {
+    return Math.round(Math.pow(Math.max(0, level - 1), 2.6) * 18);
+}
+
+function usePsoUiSprites(sheetUrl: string | null): Partial<Record<SpriteKey, string>> {
+    const [sprites, setSprites] = useState<Partial<Record<SpriteKey, string>>>({});
+    useEffect(() => {
+        if (!sheetUrl) return;
+        let cancelled = false;
+        void (async (): Promise<void> => {
+            const next: Partial<Record<SpriteKey, string>> = {};
+            for (const key of Object.keys(SPRITES) as SpriteKey[]) {
+                const def = SPRITES[key];
+                const url = await loadPsoUiSprite(sheetUrl, def.tex, def.rect);
+                if (url) next[key] = url;
+            }
+            if (!cancelled) setSprites(next);
+        })();
+        return () => {
+            cancelled = true;
         };
-    });
+    }, [sheetUrl]);
+    return sprites;
+}
 
-    // Guild Card personal comment & Simple Mail draft
-    const [guildComment, setGuildComment] = useState<string>(() => {
-        try {
-            return (
-                localStorage.getItem("mx_pso_guild_card_comment_v1") ||
-                "Pioneer 2 Matrix Hunter // Ready for Ragol & Voice Comms!"
-            );
-        } catch {
-            return "Pioneer 2 Matrix Hunter // Ready for Ragol & Voice Comms!";
+function useContainerSize(ref: React.RefObject<HTMLDivElement | null>, active: boolean): { w: number; h: number } {
+    const [size, setSize] = useState({ w: 640, h: 480 });
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!active || !el) return;
+        const measure = (): void => {
+            const w = el.clientWidth || 640;
+            const h = el.clientHeight || 480;
+            setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+        };
+        measure();
+        if (typeof ResizeObserver === "undefined") {
+            window.addEventListener("resize", measure);
+            return () => window.removeEventListener("resize", measure);
         }
-    });
-    const [mailRecipient, setMailRecipient] = useState<string>("Current Ship Block");
-    const [mailDraft, setMailDraft] = useState<string>("");
+        const observer = new ResizeObserver(measure);
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [ref, active]);
+    return size;
+}
 
-    // Load compiled `game-pack.json` and decode the extracted PSOBB `.xvm` UI texture sheets
+const PsoWindow: React.FC<{
+    sprite?: string;
+    kind: "box" | "frame";
+    className?: string;
+    style?: React.CSSProperties;
+    children?: React.ReactNode;
+    testId?: string;
+}> = ({ sprite, kind, className, style, children, testId }) => (
+    <div
+        className={classNames("pso-gm-window", `pso-gm-window--${kind}`, { "pso-gm-window--sprite": !!sprite }, className)}
+        style={sprite ? { ...style, borderImageSource: `url(${sprite})` } : style}
+        data-testid={testId}
+    >
+        {children}
+    </div>
+);
+
+export const PsoFullGameMenu: React.FC<PsoFullGameMenuProps> = (props) => {
+    const {
+        isOpen,
+        request,
+        onToggleOpen,
+        showFunctionKeyBar,
+        onToggleFunctionKeyBar,
+        displayName,
+        userId,
+        classNameLabel,
+        sectionIdName,
+        sectionIdColor,
+        level,
+        hp,
+        maxHp,
+        tp,
+        maxTp,
+        meseta,
+        pingMs,
+        shipName,
+        isLobby3dOpen,
+        partyMembers,
+        isVoiceActive,
+        isMicMuted,
+        onOpenOrCloseLobby3d,
+        onOpenSymbolChatMaker,
+        onOpenHudTuner,
+        onToggleCompactChat,
+        onPlayUiSound,
+        onMouseEnter,
+        onMouseLeave,
+    } = props;
+
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const [isMounted, setIsMounted] = useState(isOpen);
+    const [coverProgress, setCoverProgress] = useState(0);
+    const [revealedRows, setRevealedRows] = useState(0);
+    const [cursor, setCursor] = useState(0);
+    const [subOpen, setSubOpen] = useState(false);
+    const [subCursor, setSubCursor] = useState(0);
+    const [subRevealed, setSubRevealed] = useState(0);
+    const [section, setSection] = useState<PsoMenuSectionId | null>(null);
+    const [statusPage, setStatusPage] = useState(0);
+    const [clockText, setClockText] = useState(() => formatInternetTime(new Date()));
+    const [spec, setSpec] = useState<PsoCompiledUiMenuSpec | null>(null);
+    const coverProgressRef = useRef(0);
+
     useEffect(() => {
         let cancelled = false;
-        void loadCompiledGamePack().then(async (pack) => {
-            if (cancelled) return;
-            setGamePack(pack);
-            const sheets = pack.uiMenuSpec?.uiXvmSheets;
-            if (!sheets) return;
-
-            const [cursors, unitIcons, hudGauges, headerBanners, consoleChrome] = await Promise.all([
-                sheets.cursorsAndSectionIds ? loadPsoUiXvmSheet(sheets.cursorsAndSectionIds) : Promise.resolve([]),
-                sheets.unitIcons ? loadPsoUiXvmSheet(sheets.unitIcons) : Promise.resolve([]),
-                sheets.hudGauges ? loadPsoUiXvmSheet(sheets.hudGauges) : Promise.resolve([]),
-                sheets.headerBannersEng ? loadPsoUiXvmSheet(sheets.headerBannersEng) : Promise.resolve([]),
-                sheets.consoleChrome ? loadPsoUiXvmSheet(sheets.consoleChrome) : Promise.resolve([]),
-            ]);
-
-            if (!cancelled) {
-                setUiSprites({
-                    cursors,
-                    unitIcons,
-                    hudGauges,
-                    headerBanners,
-                    consoleChrome,
-                });
-            }
+        void loadCompiledGamePack().then((pack) => {
+            if (!cancelled && pack.uiMenuSpec?.uiSpecVersion === 2) setSpec(pack.uiMenuSpec);
         });
         return () => {
             cancelled = true;
         };
     }, []);
 
-    const menuSpec = gamePack.uiMenuSpec;
-    const fKeyDefs = useMemo(
-        () =>
-            menuSpec?.functionKeyLabels ?? [
-                { key: "F1", rawLabel: "F1: Function Key ON/OFF Display", actionId: "toggle_fkeys" },
-                { key: "F2", rawLabel: "F2 : Equip", actionId: "item_pack" },
-                { key: "F3", rawLabel: "F3 : Technique", actionId: "technique" },
-                { key: "F4", rawLabel: "F4 : Mag", actionId: "mag" },
-                { key: "F5", rawLabel: "F5 : Check the Guild Card", actionId: "guild_card" },
-                { key: "F6", rawLabel: "F6 : Simple Mail", actionId: "simple_mail" },
-                { key: "F7", rawLabel: "F7 : Symbol Chat", actionId: "symbol_chat" },
-                { key: "F8", rawLabel: "F8 : Team Member List", actionId: "team_list" },
-                { key: "F9", rawLabel: "F9 : Team Log", actionId: "team_log" },
-                { key: "F10", rawLabel: "F10 : Status & Area Map", actionId: "status_map" },
-                { key: "F11", rawLabel: "F11 : Quick Chat", actionId: "chat_menu" },
-                { key: "F12", rawLabel: "F12 : Main Menu", actionId: "main_menu" },
-            ],
-        [menuSpec],
-    );
+    const sprites = usePsoUiSprites(spec?.uiXvmSheets?.hudGauges ?? null);
+    const { w: containerW, h: containerH } = useContainerSize(rootRef, isMounted);
+    const unit = containerH / 480;
 
-    const tabs = useMemo(
-        () =>
-            menuSpec?.mainMenuTabs ?? [
-                {
-                    id: "item_pack",
-                    label: "Item Pack",
-                    shortcut: "F2",
-                    helpText: "View, equip, and use items in your Item Pack.",
-                    subItems: [
-                        { id: "equip_weapons", label: "Equip / Weapons", helpText: "Equip weapons and gear." },
-                        { id: "use_tools", label: "Use / Recovery Items", helpText: "Use Monomates and Fluids." },
-                        { id: "rare_drops", label: "Rare Drop Tekker Box", helpText: "Inspect rare red boxes." },
-                    ],
-                },
-                {
-                    id: "technique",
-                    label: "Technique",
-                    shortcut: "F3",
-                    helpText: "Cast learned PSOBB Techniques in the 3D Lobby & Matrix Room.",
-                    subItems: [
-                        { id: "tech_attack", label: "Attack Techniques", helpText: "Foie, Barta, Zonde, Grants, Megid." },
-                        { id: "tech_support", label: "Support & Recovery", helpText: "Resta, Anti, Shifta, Deband, Ryuker." },
-                    ],
-                },
-                {
-                    id: "mag",
-                    label: "Mag",
-                    shortcut: "F4",
-                    helpText: "Inspect your MAG, Synchro, IQ, and feed items.",
-                    subItems: [
-                        { id: "mag_feed", label: "Give Items", helpText: "Feed recovery items to raise MAG stats." },
-                        { id: "mag_pb", label: "Photon Blast", helpText: "Inspect Photon Blasts." },
-                    ],
-                },
-                {
-                    id: "status",
-                    label: "Status",
-                    shortcut: "F10",
-                    helpText: "View Hunter parameters, Section ID, resists, and Matrix Comms telemetry.",
-                    subItems: [
-                        { id: "status_hunter", label: "Hunter Parameters", helpText: "ATP, DFP, MST, ATA, EVP, LCK." },
-                        { id: "status_comms", label: "Matrix Comms Telemetry", helpText: "Homeserver ping & voice link." },
-                    ],
-                },
-                {
-                    id: "quest",
-                    label: "Quest",
-                    shortcut: "MAP",
-                    helpText: "Warp between Ragol areas, Pioneer 2 counters, and Seasonal NPC events.",
-                    subItems: [
-                        { id: "warp_areas", label: "Ragol & Pioneer 2 Area Warp", helpText: "Teleport between stages." },
-                        { id: "npc_layouts", label: "Seasonal NPC Layouts", helpText: "Switch Pioneer 2 NPC events." },
-                    ],
-                },
-                {
-                    id: "guild_card",
-                    label: "Guild Card",
-                    shortcut: "F5",
-                    helpText: "Manage Hunter Guild Cards, Matrix Room Contacts, and Simple Mail.",
-                    subItems: [
-                        { id: "card_list", label: "Search / Card List", helpText: "Browse Matrix rooms & Meet User." },
-                        { id: "my_card", label: "MY Card", helpText: "Edit your personal Hunter Guild Card." },
-                        { id: "simple_mail", label: "Simple Mail", helpText: "Transmit a Matrix Simple Mail." },
-                    ],
-                },
-                {
-                    id: "chat",
-                    label: "Chat",
-                    shortcut: "F7",
-                    helpText: "Symbol Chat, Word Select, Action Palette, and Function Key Bar.",
-                    subItems: [
-                        { id: "symbol_chat", label: "Symbol Chat", helpText: "Open Symbol Chat Maker." },
-                        { id: "action_palette", label: "Customize Action Palette", helpText: "Configure 1-0 Hex Bar." },
-                        { id: "fkey_bar", label: "F1: Function Key Display", helpText: "Toggle top F1-F12 bar." },
-                    ],
-                },
-                {
-                    id: "team",
-                    label: "Team",
-                    shortcut: "F8",
-                    helpText: "Matrix Room Party, LiveKit Voice Comms, and Team Log.",
-                    subItems: [
-                        { id: "team_list", label: "Team Member List", helpText: "Party Voice & Room Roster." },
-                        { id: "team_log", label: "Team Log", helpText: "Toggle Compact PSO Chat Log." },
-                    ],
-                },
-                {
-                    id: "option",
-                    label: "Option",
-                    shortcut: "OPT",
-                    helpText: "Configure Sound, BGM Disk, 3D Class Model, and HUD Glass Tuner.",
-                    subItems: [
-                        { id: "opt_sound", label: "Sound & BGM Disk", helpText: "Select `.ogg` soundtrack." },
-                        { id: "opt_graphics", label: "Hunter Class & 3D Lobby", helpText: "Select playable `.nj` class." },
-                        { id: "opt_hud", label: "Network Option & HUD Glass", helpText: "Click-Thru, Stream & Tuner." },
-                    ],
-                },
-                {
-                    id: "quit",
-                    label: "Quit Game",
-                    shortcut: "ESC",
-                    helpText: "Close Main Menu or Exit 3D Visual Lobby.",
-                    subItems: [
-                        { id: "quit_menu", label: "Close Main Menu [F12]", helpText: "Return to active view." },
-                        { id: "quit_lobby", label: "Exit 3D Visual Lobby", helpText: "Close 3D Lobby." },
-                    ],
-                },
-            ],
-        [menuSpec],
-    );
+    // Mount immediately on open; keep mounted during the close animation.
+    useEffect(() => {
+        if (isOpen) {
+            setIsMounted(true);
+            return;
+        }
+        if (!isMounted) return;
+        const timer = window.setTimeout(() => setIsMounted(false), COVER_CLOSE_MS);
+        return () => window.clearTimeout(timer);
+    }, [isOpen, isMounted]);
 
-    const activeTabObj = useMemo(
-        () => tabs.find((t) => t.id === activeTab) ?? tabs[0],
-        [tabs, activeTab],
-    );
+    useEffect(() => {
+        if (!isMounted) return;
+        const from = coverProgressRef.current;
+        const to = isOpen ? 1 : 0;
+        const duration = isOpen ? COVER_OPEN_MS : COVER_CLOSE_MS;
+        const start = performance.now();
+        let frame = 0;
+        const step = (now: number): void => {
+            const t = Math.min(1, (now - start) / duration);
+            const value = from + (to - from) * t;
+            coverProgressRef.current = value;
+            setCoverProgress(value);
+            if (t < 1) frame = requestAnimationFrame(step);
+        };
+        frame = requestAnimationFrame(step);
+        return () => cancelAnimationFrame(frame);
+    }, [isOpen, isMounted]);
 
-    const activeSubItem = activeTabObj?.subItems[activeSubItemIdx] ?? activeTabObj?.subItems[0];
-
-    const feedMag = useCallback(
-        (item: "Monomate" | "Dimate" | "Trimate" | "Monofluid" | "Difluid" | "Star Atomizer") => {
-            onPlayUiSound("heal");
-            setMagStats((prev) => {
-                const next = { ...prev };
-                if (item === "Monomate") next.pow = Math.min(150, next.pow + 2);
-                else if (item === "Dimate") {
-                    next.pow = Math.min(150, next.pow + 3);
-                    next.def = Math.min(150, next.def + 1);
-                } else if (item === "Trimate") {
-                    next.pow = Math.min(150, next.pow + 2);
-                    next.dex = Math.min(150, next.dex + 2);
-                } else if (item === "Monofluid") next.mind = Math.min(150, next.mind + 2);
-                else if (item === "Difluid") {
-                    next.mind = Math.min(150, next.mind + 3);
-                    next.iq = Math.min(200, next.iq + 3);
-                } else if (item === "Star Atomizer") {
-                    next.synchro = Math.min(120, next.synchro + 8);
-                    next.iq = Math.min(200, next.iq + 5);
+    const wasOpenRef = useRef(false);
+    useEffect(() => {
+        if (!isOpen) {
+            if (wasOpenRef.current) onPlayUiSound("cancel");
+            wasOpenRef.current = false;
+            setRevealedRows(0);
+            setSubOpen(false);
+            setSection(null);
+            return;
+        }
+        wasOpenRef.current = true;
+        onPlayUiSound("confirm");
+        setRevealedRows(1);
+        const timer = window.setInterval(() => {
+            setRevealedRows((n) => {
+                if (n >= MAIN_MENU.length) {
+                    window.clearInterval(timer);
+                    return n;
                 }
-                next.level = Math.min(200, next.def + next.pow + next.dex + next.mind);
-                try {
-                    localStorage.setItem("mx_pso_mag_stats_v1", JSON.stringify(next));
-                } catch {
-                    // ignore
-                }
-                return next;
+                return n + 1;
             });
-            setStatusBannerMsg(`Fed ${item} to ${magStats.name}! SYNCHRO & IQ increased.`);
-        },
-        [magStats.name, onPlayUiSound],
-    );
+        }, ROW_REVEAL_MS);
+        return () => window.clearInterval(timer);
+        // The open sound should fire once per opening, not when the callback identity changes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
 
-    const handleFKeyClick = useCallback(
-        (actionId: string) => {
+    useEffect(() => {
+        if (!subOpen) {
+            setSubRevealed(0);
+            return;
+        }
+        const total = MAIN_MENU[cursor].items.length;
+        setSubRevealed(1);
+        const timer = window.setInterval(() => {
+            setSubRevealed((n) => {
+                if (n >= total) {
+                    window.clearInterval(timer);
+                    return n;
+                }
+                return n + 1;
+            });
+        }, ROW_REVEAL_MS);
+        return () => window.clearInterval(timer);
+    }, [subOpen, cursor]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const timer = window.setInterval(() => setClockText(formatInternetTime(new Date())), 10_000);
+        return () => window.clearInterval(timer);
+    }, [isOpen]);
+
+    useEffect(() => {
+        document.body.classList.toggle("pso-gamemenu-open", isOpen);
+        return () => document.body.classList.remove("pso-gamemenu-open");
+    }, [isOpen]);
+
+    const handledRequestNonceRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (!request || !isOpen || handledRequestNonceRef.current === request.nonce) return;
+        handledRequestNonceRef.current = request.nonce;
+        const tabIndex = Math.max(
+            0,
+            MAIN_MENU.findIndex((m) => m.id === request.tab),
+        );
+        setCursor(tabIndex);
+        setRevealedRows(MAIN_MENU.length);
+        if (request.section) {
+            const subIndex = MAIN_MENU[tabIndex].items.findIndex((i) => i.section === request.section);
+            setSubOpen(true);
+            setSubCursor(Math.max(0, subIndex));
+            setSection(request.section);
+        } else {
+            setSubOpen(false);
+            setSection(null);
+        }
+    }, [request, isOpen]);
+
+    const activeMain = MAIN_MENU[cursor];
+    const activeSub = subOpen ? activeMain.items[subCursor] : undefined;
+
+    const helpText = useMemo(() => {
+        const target = activeSub ?? activeMain;
+        return (target.helpKey && spec?.helpTexts?.[target.helpKey]) || target.fallbackHelp;
+    }, [activeMain, activeSub, spec]);
+
+    const runSubItem = useCallback(
+        (item: SubMenuItem): void => {
             onPlayUiSound("confirm");
-            if (actionId === "toggle_fkeys") {
-                onToggleFunctionKeyBar();
+            if (item.section) {
+                setSection(item.section);
                 return;
             }
-            if (actionId === "main_menu") {
-                onToggleOpen();
-                return;
-            }
-            const mapToTab: Record<string, { tab: PsoMainMenuTabId; subIdx: number }> = {
-                item_pack: { tab: "item_pack", subIdx: 0 },
-                technique: { tab: "technique", subIdx: 0 },
-                mag: { tab: "mag", subIdx: 0 },
-                guild_card: { tab: "guild_card", subIdx: 0 },
-                simple_mail: { tab: "guild_card", subIdx: 2 },
-                symbol_chat: { tab: "chat", subIdx: 0 },
-                team_list: { tab: "team", subIdx: 0 },
-                team_log: { tab: "team", subIdx: 1 },
-                status_map: { tab: "status", subIdx: 0 },
-                chat_menu: { tab: "chat", subIdx: 1 },
-            };
-            const target = mapToTab[actionId];
-            if (target) {
-                onSelectTab(target.tab);
-                setActiveSubItemIdx(target.subIdx);
-                if (!isOpen) onToggleOpen(true);
+            switch (item.action) {
+                case "symbol_chat":
+                    onToggleOpen(false);
+                    onOpenSymbolChatMaker();
+                    break;
+                case "action_palette":
+                    onToggleOpen(false);
+                    onOpenHudTuner();
+                    break;
+                case "function_keys":
+                    onToggleFunctionKeyBar();
+                    break;
+                case "team_log":
+                    onToggleCompactChat();
+                    break;
+                case "resume":
+                    onToggleOpen(false);
+                    break;
+                case "exit_lobby":
+                    onToggleOpen(false);
+                    onOpenOrCloseLobby3d(false);
+                    break;
             }
         },
-        [isOpen, onPlayUiSound, onSelectTab, onToggleFunctionKeyBar, onToggleOpen],
+        [onPlayUiSound, onToggleOpen, onOpenSymbolChatMaker, onOpenHudTuner, onToggleFunctionKeyBar, onToggleCompactChat, onOpenOrCloseLobby3d],
     );
 
-    // Extracted cursor sprite & Section ID badge from `f064_mucarsol.xvm` if present
-    const extractedCursorUrl = uiSprites.cursors[0]?.dataUrl ?? null;
-    const extractedUnitIconUrl = uiSprites.unitIcons[0]?.dataUrl ?? null;
-    const extractedHudGaugeUrl = uiSprites.hudGauges[0]?.dataUrl ?? null;
+    const goBack = useCallback((): void => {
+        if (section || subOpen) onPlayUiSound("cancel");
+        if (section) setSection(null);
+        else if (subOpen) setSubOpen(false);
+        else onToggleOpen(false);
+    }, [onPlayUiSound, section, subOpen, onToggleOpen]);
 
-    const equippedWeaponSpec = useMemo(
-        () => WEAPON_ARSENAL.find((w) => w.id === currentWeaponId) ?? WEAPON_ARSENAL[0],
-        [currentWeaponId],
-    );
+    useEffect(() => {
+        if (!isOpen) return;
+        const onKeyDown = (e: KeyboardEvent): void => {
+            const target = e.target as HTMLElement | null;
+            const inField =
+                !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+            if (inField && e.key !== "Escape") return;
+            if (inField && !rootRef.current?.contains(target)) return;
 
-    const statLabels = menuSpec?.statLabels ?? {
-        atp: "ATP",
-        dfp: "DFP",
-        mst: "MST",
-        ata: "ATA",
-        evp: "EVP",
-        lck: "LCK",
-        level: "LEVEL",
-        exp: "EXP",
-        synchro: "Synchro",
-        iq: "IQ",
-        efr: "EFR",
-        eic: "EIC",
-        eth: "ETH",
-        edk: "EDK",
-        elt: "ELT",
-        nextLevel: "NEXT LEVEL",
-        meseta: "Meseta",
-    };
+            let handled = true;
+            switch (e.key) {
+                case "ArrowUp":
+                case "ArrowDown": {
+                    if (section) {
+                        handled = false;
+                        break;
+                    }
+                    const delta = e.key === "ArrowUp" ? -1 : 1;
+                    if (subOpen) {
+                        const n = activeMain.items.length;
+                        setSubCursor((c) => (c + delta + n) % n);
+                    } else {
+                        setCursor((c) => (c + delta + MAIN_MENU.length) % MAIN_MENU.length);
+                    }
+                    onPlayUiSound("cursor");
+                    break;
+                }
+                case "Enter":
+                case "ArrowRight":
+                    if (section) {
+                        handled = e.key === "ArrowRight";
+                        if (handled) setStatusPage((p) => (p + 1) % STATUS_PAGE_COUNT);
+                        break;
+                    }
+                    if (subOpen) runSubItem(activeMain.items[subCursor]);
+                    else {
+                        onPlayUiSound("confirm");
+                        setSubCursor(0);
+                        setSubOpen(true);
+                    }
+                    break;
+                case "Escape":
+                case "Backspace":
+                case "ArrowLeft":
+                    goBack();
+                    break;
+                case "[":
+                case "PageUp":
+                    setStatusPage((p) => (p - 1 + STATUS_PAGE_COUNT) % STATUS_PAGE_COUNT);
+                    onPlayUiSound("cursor");
+                    break;
+                case "]":
+                case "PageDown":
+                    setStatusPage((p) => (p + 1) % STATUS_PAGE_COUNT);
+                    onPlayUiSound("cursor");
+                    break;
+                default:
+                    handled = false;
+            }
+            if (handled) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+        window.addEventListener("keydown", onKeyDown, true);
+        return () => window.removeEventListener("keydown", onKeyDown, true);
+    }, [isOpen, section, subOpen, subCursor, activeMain, runSubItem, goBack, onPlayUiSound]);
 
-    const computedAtp = 680 + level * 6 + equippedWeaponSpec.atpBonus + magStats.pow * 2;
-    const computedDfp = 310 + level * 4 + magStats.def;
-    const computedMst = 520 + level * 5 + magStats.mind * 2;
-    const computedAta = 145 + Math.floor(level * 0.8) + equippedWeaponSpec.ataBonus + Math.floor(magStats.dex * 0.5);
-    const computedEvp = 440 + level * 3;
-    const computedLck = 38 + (level % 62);
+    const svgIdBase = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+
+    if (!isMounted) {
+        return <div ref={rootRef} className="pso-gm-root pso-gm-root--hidden" aria-hidden="true" />;
+    }
+
+    const statLabels = spec?.statLabels ?? FALLBACK_STAT_LABELS;
+    const eased = easeOutCubic(coverProgress);
+    const cutLeft = LAYOUT.cutout.left * unit * eased;
+    const cutBottom = containerH - (containerH - LAYOUT.cutout.bottom * unit) * eased;
+    const cutRadius = LAYOUT.cutout.radius * unit * eased;
+    const hpPct = maxHp > 0 ? Math.max(0, Math.min(100, (hp / maxHp) * 100)) : 0;
+    const tpPct = maxTp > 0 ? Math.max(0, Math.min(100, (tp / maxTp) * 100)) : 0;
+    const totalExp = experienceForLevel(level);
+    const toNext = Math.max(0, experienceForLevel(level + 1) - totalExp);
+    const menuH = LAYOUT.menu.pad * 2 + LAYOUT.menu.rowH * Math.max(1, revealedRows);
+    const subTop = LAYOUT.menu.top + cursor * LAYOUT.menu.rowH;
+    const subH = LAYOUT.menu.pad * 2 + LAYOUT.menu.rowH * Math.max(1, subRevealed);
+
+    const rootStyle = { "--u": `${unit}px` } as React.CSSProperties;
 
     return (
-        <>
-            {/* 1. AUTHENTIC PSOBB TOP FUNCTION KEY BAR (`F1` - `F12` from `unitxt_e.prs` Cat[11][353..364]) */}
-            {showFunctionKeyBar && (
-                <div
-                    className="pso-fkey-strip pso-interactive"
-                    data-testid="pso-fkey-strip"
-                    onMouseEnter={onMouseEnter}
-                    onMouseLeave={onMouseLeave}
+        <div
+            ref={rootRef}
+            className={classNames("pso-gm-root", { "pso-gm-root--closing": !isOpen })}
+            style={rootStyle}
+            data-testid="pso-full-game-menu"
+            role="dialog"
+            aria-label="Main menu"
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
+        >
+            <svg className="pso-gm-cover" width={containerW} height={containerH} aria-hidden="true">
+                <defs>
+                    <pattern id={`${svgIdBase}-scan`} width="4" height="3" patternUnits="userSpaceOnUse">
+                        <rect width="4" height="3" fill="rgba(8, 58, 66, 0.7)" />
+                        <rect y="2" width="4" height="1" fill="rgba(0, 14, 20, 0.45)" />
+                    </pattern>
+                    <mask id={`${svgIdBase}-mask`}>
+                        <rect width={containerW} height={containerH} fill="white" />
+                        <rect
+                            x={cutLeft}
+                            y={-cutRadius}
+                            width={Math.max(0, containerW - cutLeft + cutRadius)}
+                            height={Math.max(0, cutBottom + cutRadius)}
+                            rx={cutRadius}
+                            fill="black"
+                        />
+                    </mask>
+                </defs>
+                <rect
+                    width={containerW}
+                    height={containerH}
+                    fill={`url(#${svgIdBase}-scan)`}
+                    mask={`url(#${svgIdBase}-mask)`}
+                />
+                <rect
+                    x={cutLeft}
+                    y={-cutRadius - 4}
+                    width={Math.max(0, containerW - cutLeft + cutRadius + 4)}
+                    height={Math.max(0, cutBottom + cutRadius + 4)}
+                    rx={cutRadius}
+                    fill="none"
+                    stroke="#62e6dc"
+                    strokeWidth={Math.max(1, 1.5 * unit)}
+                    opacity={eased}
+                />
+            </svg>
+
+            <div
+                className={classNames("pso-gm-plate", { "pso-gm-plate--sprite": !!sprites.plate })}
+                style={{ ...box(LAYOUT.plate), backgroundImage: sprites.plate ? `url(${sprites.plate})` : undefined }}
+                data-testid="pso-gm-plate"
+            >
+                <span className="pso-gm-plate-label pso-gm-plate-label--hp">HP</span>
+                <span className="pso-gm-plate-value pso-gm-plate-value--hp">
+                    {Math.round(hp)}/{Math.round(maxHp)}
+                </span>
+                <span className="pso-gm-plate-bar pso-gm-plate-bar--hp">
+                    <span style={{ width: `${hpPct}%` }} />
+                </span>
+                <span className="pso-gm-plate-label pso-gm-plate-label--tp">TP</span>
+                <span className="pso-gm-plate-value pso-gm-plate-value--tp">
+                    {Math.round(tp)}/{Math.round(maxTp)}
+                </span>
+                <span className="pso-gm-plate-bar pso-gm-plate-bar--tp">
+                    <span style={{ width: `${tpPct}%` }} />
+                </span>
+                <span className="pso-gm-plate-level">Lv {level}</span>
+                <span className="pso-gm-plate-name">{displayName}</span>
+            </div>
+
+            <PsoWindow
+                kind="box"
+                sprite={sprites.menuBox}
+                className="pso-gm-menu"
+                style={box({ left: LAYOUT.menu.left, top: LAYOUT.menu.top, w: LAYOUT.menu.w, h: menuH })}
+                testId="pso-gm-main-menu"
+            >
+                {MAIN_MENU.slice(0, revealedRows).map((item, index) => (
+                    <button
+                        key={item.id}
+                        type="button"
+                        className={classNames("pso-gm-row", { "pso-gm-row--active": index === cursor })}
+                        data-testid={`pso-gamemenu-tab-${item.id}`}
+                        onMouseEnter={() => {
+                            if (subOpen || index === cursor) return;
+                            setCursor(index);
+                            onPlayUiSound("cursor");
+                        }}
+                        onClick={() => {
+                            setCursor(index);
+                            setSection(null);
+                            setSubCursor(0);
+                            setSubOpen(true);
+                            onPlayUiSound("confirm");
+                        }}
+                    >
+                        {item.label}
+                    </button>
+                ))}
+            </PsoWindow>
+
+            {subOpen && (
+                <PsoWindow
+                    kind="box"
+                    sprite={sprites.menuBox}
+                    className="pso-gm-menu pso-gm-menu--sub"
+                    style={box({ left: LAYOUT.sub.left, top: subTop, w: LAYOUT.sub.w, h: subH })}
+                    testId="pso-gm-sub-menu"
                 >
-                    {fKeyDefs.map((fk) => {
-                        const shortTitle = fk.rawLabel
-                            .replace(/^F\d+\s*:\s*/i, "")
-                            .replace(/Function Key ON\/OFF Display/i, "F-Key Bar")
-                            .replace(/Check the Guild Card/i, "Guild Card")
-                            .replace(/Team Member List/i, "Team List");
-                        const isCurrent =
-                            isOpen &&
-                            ((fk.actionId === "item_pack" && activeTab === "item_pack") ||
-                                (fk.actionId === "technique" && activeTab === "technique") ||
-                                (fk.actionId === "mag" && activeTab === "mag") ||
-                                (fk.actionId === "guild_card" && activeTab === "guild_card") ||
-                                (fk.actionId === "simple_mail" && activeTab === "guild_card" && activeSubItemIdx === 2) ||
-                                (fk.actionId === "symbol_chat" && activeTab === "chat") ||
-                                (fk.actionId === "team_list" && activeTab === "team") ||
-                                (fk.actionId === "status_map" && activeTab === "status") ||
-                                (fk.actionId === "main_menu" && isOpen));
+                    {activeMain.items.slice(0, subRevealed).map((item, index) => (
+                        <button
+                            key={item.label}
+                            type="button"
+                            className={classNames("pso-gm-row", {
+                                "pso-gm-row--active": index === subCursor,
+                                "pso-gm-row--on": item.action === "function_keys" && showFunctionKeyBar,
+                            })}
+                            data-testid={`pso-gm-sub-${item.section ?? item.action}`}
+                            onMouseEnter={() => {
+                                if (section || index === subCursor) return;
+                                setSubCursor(index);
+                                onPlayUiSound("cursor");
+                            }}
+                            onClick={() => {
+                                setSubCursor(index);
+                                runSubItem(item);
+                            }}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+                </PsoWindow>
+            )}
+
+            {section && (
+                <PsoWindow
+                    kind="frame"
+                    sprite={sprites.windowFrame}
+                    className="pso-gm-detail"
+                    style={{
+                        left: `calc(var(--u) * ${LAYOUT.detail.left})`,
+                        top: `calc(var(--u) * ${LAYOUT.detail.top})`,
+                        right: `calc(var(--u) * ${LAYOUT.detail.right})`,
+                        bottom: `calc(var(--u) * ${LAYOUT.detail.bottom})`,
+                    }}
+                    testId={`pso-gm-detail-${section}`}
+                >
+                    <div className="pso-gm-detail-title">
+                        <span>{activeSub?.label ?? ""}</span>
+                        <button
+                            type="button"
+                            className="pso-gm-detail-close"
+                            onClick={goBack}
+                            aria-label="Back"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                    <div className="pso-gm-detail-body">
+                        <PsoMenuSection section={section} spec={spec} {...props} />
+                    </div>
+                </PsoWindow>
+            )}
+
+            <PsoWindow
+                kind="frame"
+                sprite={sprites.windowFrame}
+                className="pso-gm-help"
+                style={box(LAYOUT.help)}
+                testId="pso-gm-help"
+            >
+                {helpText}
+            </PsoWindow>
+
+            <PsoWindow
+                kind="frame"
+                sprite={sprites.windowFrame}
+                className="pso-gm-status"
+                style={{
+                    right: `calc(var(--u) * ${LAYOUT.status.right})`,
+                    top: `calc(var(--u) * ${LAYOUT.status.top})`,
+                    width: `calc(var(--u) * ${LAYOUT.status.w})`,
+                    height: `calc(var(--u) * ${LAYOUT.status.h})`,
+                }}
+                testId="pso-gm-status"
+            >
+                <div className="pso-gm-status-page">
+                    {statusPage === 0 && (
+                        <>
+                            <StatusRow label={displayName} value={`Lv ${level}`} strong />
+                            <StatusRow label={classNameLabel} value="" />
+                            <div className="pso-gm-status-row">
+                                <span>{sectionIdName}</span>
+                                <span className="pso-gm-section-emblem" style={{ color: sectionIdColor }}>
+                                    ◆
+                                </span>
+                            </div>
+                            <StatusRow label={statLabels.totalExp} value={totalExp.toLocaleString()} />
+                            <StatusRow label={statLabels.toNextLv} value={toNext.toLocaleString()} />
+                            <StatusRow label={statLabels.money} value={meseta.toLocaleString()} />
+                        </>
+                    )}
+                    {statusPage === 1 && (
+                        <>
+                            <StatusRow label="HP" value={`${Math.round(hp)}/${Math.round(maxHp)}`} />
+                            <StatusRow label="TP" value={`${Math.round(tp)}/${Math.round(maxTp)}`} />
+                            <StatusRow label={statLabels.atp} value={String(80 + level * 9)} />
+                            <StatusRow label={statLabels.dfp} value={String(40 + level * 4)} />
+                            <StatusRow label={statLabels.mst} value={String(30 + level * 5)} />
+                            <StatusRow label={statLabels.ata} value={String(60 + level * 2)} />
+                            <StatusRow label={statLabels.evp} value={String(50 + level * 3)} />
+                            <StatusRow label={statLabels.lck} value="10" />
+                        </>
+                    )}
+                    {statusPage === 2 && (
+                        <>
+                            <StatusRow label={statLabels.efr} value={String(Math.min(60, Math.floor(level / 4)))} />
+                            <StatusRow label={statLabels.eic} value={String(Math.min(60, Math.floor(level / 4)))} />
+                            <StatusRow label={statLabels.eth} value={String(Math.min(60, Math.floor(level / 4)))} />
+                            <StatusRow label={statLabels.edk} value={String(Math.min(60, Math.floor(level / 5)))} />
+                            <StatusRow label={statLabels.elt} value={String(Math.min(60, Math.floor(level / 5)))} />
+                        </>
+                    )}
+                    {statusPage === 3 && (
+                        <>
+                            <StatusRow label="Mag" value="Mag" strong />
+                            <StatusRow label={statLabels.magLevel} value={String(Math.min(200, 5 + level))} />
+                            <StatusRow label={statLabels.synchro} value="120%" />
+                            <StatusRow label={statLabels.iq} value="200" />
+                        </>
+                    )}
+                    {statusPage === 4 && (
+                        <>
+                            <StatusRow label="Matrix" value="" strong />
+                            <StatusRow label="Ping" value={`${pingMs} ms`} />
+                            <StatusRow label="Voice" value={isVoiceActive ? "Connected" : "Off"} />
+                            <StatusRow label="Mic" value={isMicMuted ? "Muted" : "Live"} />
+                            <StatusRow label="ID" value={userId} />
+                        </>
+                    )}
+                    {statusPage === 5 && (
+                        <>
+                            <StatusRow label="Party" value={`${partyMembers.length}`} strong />
+                            {partyMembers.slice(0, 5).map((m) => (
+                                <StatusRow
+                                    key={m.userId}
+                                    label={`${m.speaking ? "♪ " : ""}${m.displayName}`}
+                                    value={`Lv ${m.level}`}
+                                />
+                            ))}
+                        </>
+                    )}
+                    {statusPage === 6 && (
+                        <>
+                            <StatusRow label="Ship" value={shipName} strong />
+                            <StatusRow
+                                label="Area"
+                                value={STAGE_OPTIONS.find((s) => s.id === props.currentStageId)?.name ?? ""}
+                            />
+                            <StatusRow label="3D Lobby" value={isLobby3dOpen ? "Open" : "Closed"} />
+                        </>
+                    )}
+                </div>
+                <div className="pso-gm-pager">
+                    <button
+                        type="button"
+                        aria-label="Previous page"
+                        data-testid="pso-gm-status-prev"
+                        onClick={() => {
+                            setStatusPage((p) => (p - 1 + STATUS_PAGE_COUNT) % STATUS_PAGE_COUNT);
+                            onPlayUiSound("cursor");
+                        }}
+                    >
+                        ◀◀
+                    </button>
+                    <span data-testid="pso-gm-status-page">
+                        {statusPage + 1}/{STATUS_PAGE_COUNT}
+                    </span>
+                    <button
+                        type="button"
+                        aria-label="Next page"
+                        data-testid="pso-gm-status-next"
+                        onClick={() => {
+                            setStatusPage((p) => (p + 1) % STATUS_PAGE_COUNT);
+                            onPlayUiSound("cursor");
+                        }}
+                    >
+                        ▶▶
+                    </button>
+                </div>
+            </PsoWindow>
+
+            <div
+                className="pso-gm-clock"
+                style={{
+                    right: `calc(var(--u) * ${LAYOUT.clock.right})`,
+                    top: `calc(var(--u) * ${LAYOUT.clock.top})`,
+                }}
+            >
+                {clockText}
+            </div>
+        </div>
+    );
+};
+
+function box(rect: { left: number; top: number; w: number; h: number }): React.CSSProperties {
+    return {
+        left: `calc(var(--u) * ${rect.left})`,
+        top: `calc(var(--u) * ${rect.top})`,
+        width: `calc(var(--u) * ${rect.w})`,
+        height: `calc(var(--u) * ${rect.h})`,
+    };
+}
+
+const StatusRow: React.FC<{ label: string; value: string; strong?: boolean }> = ({ label, value, strong }) => (
+    <div className={classNames("pso-gm-status-row", { "pso-gm-status-row--strong": strong })}>
+        <span>{label}</span>
+        <span>{value}</span>
+    </div>
+);
+
+const PsoMenuSection: React.FC<PsoFullGameMenuProps & { section: PsoMenuSectionId; spec: PsoCompiledUiMenuSpec | null }> = (
+    props,
+) => {
+    const { section, spec } = props;
+    const [mailTarget, setMailTarget] = useState("");
+    const [mailText, setMailText] = useState("");
+
+    const techniques = spec?.techniques?.length ? spec.techniques : FALLBACK_TECHNIQUES;
+    const tools = spec?.toolItems?.length ? spec.toolItems : FALLBACK_TOOLS;
+
+    switch (section) {
+        case "equip":
+            return (
+                <div className="pso-gm-list">
+                    {WEAPON_ARSENAL.map((w) => (
+                        <button
+                            key={w.id}
+                            type="button"
+                            className={classNames("pso-gm-list-item", { "pso-gm-list-item--on": props.currentWeaponId === w.id })}
+                            onClick={() => {
+                                props.onSelectWeapon(w.id);
+                                props.onPlayUiSound("confirm");
+                            }}
+                            title={w.desc}
+                        >
+                            <span>
+                                {props.currentWeaponId === w.id ? "E " : ""}
+                                {w.name}
+                            </span>
+                            <span className="pso-gm-list-meta">
+                                ATP {w.atp} / ATA {w.ata}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            );
+        case "use_items":
+            return (
+                <div className="pso-gm-list">
+                    {tools.map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            className="pso-gm-list-item"
+                            title={item.description}
+                            onClick={() => {
+                                props.onUseConsumerItem(item.name);
+                                props.onPlayUiSound("heal");
+                            }}
+                        >
+                            <span>{item.name}</span>
+                            <span className="pso-gm-list-meta">x10</span>
+                        </button>
+                    ))}
+                </div>
+            );
+        case "technique":
+            return (
+                <div className="pso-gm-list">
+                    {techniques.map((tech) => {
+                        const cost = TECH_TP_COST[tech.name.toLowerCase()] ?? 10;
                         return (
                             <button
-                                key={fk.key}
+                                key={tech.id}
                                 type="button"
-                                className={classNames("pso-fkey-chip", {
-                                    "pso-fkey-chip--active": isCurrent,
-                                })}
-                                onClick={() => handleFKeyClick(fk.actionId)}
-                                title={fk.rawLabel}
-                                data-testid={`pso-fkey-${fk.key.toLowerCase()}`}
+                                className="pso-gm-list-item"
+                                title={tech.description}
+                                disabled={props.tp < cost}
+                                onClick={() => {
+                                    props.onCastTechnique(tech.name, cost);
+                                    props.onPlayUiSound("tech");
+                                }}
                             >
-                                <span className="pso-fkey-badge">{fk.key}</span>
-                                <span className="pso-fkey-label">{shortTitle}</span>
+                                <span>{tech.name}</span>
+                                <span className="pso-gm-list-meta">TP {cost}</span>
                             </button>
                         );
                     })}
                 </div>
-            )}
-
-            {/* 2. CASCADING PSOBB FULL GAME MENU (`F12` Main Menu + Sub-Menu + Action Inspector) */}
-            {isOpen && (
-                <div
-                    className="pso-gamemenu-backdrop pso-interactive"
-                    data-testid="pso-full-game-menu"
-                    onMouseEnter={onMouseEnter}
-                    onMouseLeave={onMouseLeave}
-                >
-                    {/* Top PSOBB Header Banner (`f512_midashi_eng.xvm` + `f256_hyouji.xvm` chrome) */}
-                    <div className="pso-gamemenu-top-banner">
-                        <div className="pso-gamemenu-top-left">
-                            {extractedCursorUrl && (
-                                <img
-                                    src={extractedCursorUrl}
-                                    alt=""
-                                    className="pso-gamemenu-xvm-emblem"
-                                />
-                            )}
-                            <div>
-                                <div className="pso-gamemenu-ship-tag">
-                                    PIONEER 2 MAIN MENU // {shipName}
-                                </div>
-                                <div className="pso-gamemenu-hunter-tag">
-                                    <strong>{displayName}</strong> &middot; {classNameLabel} &middot;{" "}
-                                    <span style={{ color: sectionIdColor }}>{sectionIdName}</span> &middot;{" "}
-                                    {statLabels.level} {level} &middot;{" "}
-                                    <span className="pso-gamemenu-meseta">
-                                        {meseta.toLocaleString()} {statLabels.meseta}
-                                    </span>
-                                </div>
-                            </div>
+            );
+        case "mag":
+            return (
+                <div className="pso-gm-text">
+                    <p>Your Mag follows you through the lobby and reacts to Symbol Chat.</p>
+                    <p>Feeding is not wired to items yet.</p>
+                </div>
+            );
+        case "rare_drops":
+            return props.rareDrops.length ? (
+                <div className="pso-gm-list">
+                    {props.rareDrops.map((drop, i) => (
+                        <div key={`${drop}-${i}`} className="pso-gm-list-item pso-gm-list-item--rare">
+                            <span>{drop}</span>
                         </div>
-
-                        <div className="pso-gamemenu-top-right">
-                            <button
-                                type="button"
-                                className={classNames("pso-gamemenu-quick-pill", {
-                                    "pso-gamemenu-quick-pill--active": isLobby3dOpen,
-                                })}
-                                onClick={() => {
-                                    onPlayUiSound("confirm");
-                                    onOpenOrCloseLobby3d(!isLobby3dOpen);
-                                }}
-                            >
-                                {isLobby3dOpen ? "🌐 3D Lobby: ACTIVE" : "🌐 Launch 3D Lobby"}
-                            </button>
-                            <button
-                                type="button"
-                                className="pso-gamemenu-close-btn"
-                                onClick={() => {
-                                    onPlayUiSound("cancel");
-                                    onToggleOpen(false);
-                                }}
-                                title="Close PSOBB Main Menu (F12 or Esc)"
-                                data-testid="pso-full-game-menu-close"
-                            >
-                                ✕ ESC / F12
-                            </button>
-                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="pso-gm-text">No rare items found yet.</div>
+            );
+        case "hunter_class":
+            return (
+                <div className="pso-gm-list pso-gm-list--grid">
+                    {CLASS_OPTIONS.map((c) => (
+                        <button
+                            key={c.id}
+                            type="button"
+                            className={classNames("pso-gm-list-item", { "pso-gm-list-item--on": props.currentClassId === c.id })}
+                            title={c.race}
+                            onClick={() => {
+                                props.onSelectClass(c.id);
+                                props.onPlayUiSound("confirm");
+                            }}
+                        >
+                            <span>{c.label}</span>
+                        </button>
+                    ))}
+                </div>
+            );
+        case "area_warp":
+            return (
+                <div className="pso-gm-list">
+                    {STAGE_OPTIONS.map((s) => (
+                        <button
+                            key={s.id}
+                            type="button"
+                            className={classNames("pso-gm-list-item", { "pso-gm-list-item--on": props.currentStageId === s.id })}
+                            title={s.desc}
+                            onClick={() => {
+                                if (!props.isLobby3dOpen) props.onOpenOrCloseLobby3d(true);
+                                props.onSelectStage(s.id);
+                                props.onPlayUiSound("confirm");
+                            }}
+                        >
+                            <span>{s.name}</span>
+                        </button>
+                    ))}
+                </div>
+            );
+        case "npc_layout":
+            return (
+                <div className="pso-gm-list">
+                    {NPC_LAYOUTS.map((l) => (
+                        <button
+                            key={l.id}
+                            type="button"
+                            className={classNames("pso-gm-list-item", { "pso-gm-list-item--on": props.currentNpcLayout === l.id })}
+                            onClick={() => {
+                                props.onSelectNpcLayout(l.id);
+                                props.onPlayUiSound("confirm");
+                            }}
+                        >
+                            <span>{l.label}</span>
+                        </button>
+                    ))}
+                </div>
+            );
+        case "guild_cards":
+            return props.guildRooms.length ? (
+                <div className="pso-gm-list">
+                    {props.guildRooms.map((room) => (
+                        <button
+                            key={room.roomId}
+                            type="button"
+                            className={classNames("pso-gm-list-item", { "pso-gm-list-item--on": room.isCurrent })}
+                            onClick={() => {
+                                props.onSelectGuildRoom(room.roomId);
+                                props.onPlayUiSound("confirm");
+                            }}
+                        >
+                            <span>
+                                {room.isDirect ? "✉ " : ""}
+                                {room.name}
+                            </span>
+                            <span className="pso-gm-list-meta">
+                                {room.unreadCount ? `${room.unreadCount} new · ` : ""}
+                                {room.memberCount}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            ) : (
+                <div className="pso-gm-text">No Guild Cards (rooms) yet.</div>
+            );
+        case "my_card":
+            return (
+                <div className="pso-gm-card">
+                    <div className="pso-gm-status-row pso-gm-status-row--strong">
+                        <span>{props.displayName}</span>
+                        <span>Lv {props.level}</span>
                     </div>
-
-                    {/* Three-Column Cascading PSOBB Windows */}
-                    <div className="pso-gamemenu-cascade">
-                        {/* COLUMN 1: LEFT MAIN MENU (`F12` Top-Level Categories) */}
-                        <div className="pso-gamemenu-col pso-gamemenu-col--primary" role="menu">
-                            <div className="pso-gamemenu-win-header">
-                                <span>MAIN MENU</span>
-                                <span className="pso-gamemenu-win-sub">F12</span>
-                            </div>
-                            <div className="pso-gamemenu-list">
-                                {tabs.map((tab) => {
-                                    const selected = tab.id === activeTab;
-                                    return (
-                                        <button
-                                            key={tab.id}
-                                            type="button"
-                                            className={classNames("pso-gamemenu-item", {
-                                                "pso-gamemenu-item--active": selected,
-                                            })}
-                                            onMouseEnter={() => {
-                                                if (!selected) onPlayUiSound("cursor");
-                                            }}
-                                            onClick={() => {
-                                                onPlayUiSound("confirm");
-                                                onSelectTab(tab.id as PsoMainMenuTabId);
-                                                setActiveSubItemIdx(0);
-                                            }}
-                                            data-testid={`pso-gamemenu-tab-${tab.id}`}
-                                        >
-                                            <span className="pso-gamemenu-cursor">
-                                                {selected ? "▶" : " "}
-                                            </span>
-                                            <span className="pso-gamemenu-item-label">{tab.label}</span>
-                                            <span className="pso-gamemenu-item-shortcut">{tab.shortcut}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            {extractedHudGaugeUrl && (
-                                <div className="pso-gamemenu-xvm-strip" title="Extracted PSOBB f256_hyouji.xvm">
-                                    <img src={extractedHudGaugeUrl} alt="PSOBB HUD XVM" />
-                                    <span>XVM UI LOADED ({uiSprites.hudGauges.length + uiSprites.cursors.length} TEX)</span>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* COLUMN 2: MIDDLE SUB-MENU WINDOW */}
-                        <div className="pso-gamemenu-col pso-gamemenu-col--secondary">
-                            <div className="pso-gamemenu-win-header">
-                                <span>{activeTabObj?.label.toUpperCase()}</span>
-                                <span className="pso-gamemenu-win-sub">{activeTabObj?.shortcut}</span>
-                            </div>
-                            <div className="pso-gamemenu-list">
-                                {(activeTabObj?.subItems ?? []).map((sub, idx) => {
-                                    const selected = idx === activeSubItemIdx;
-                                    return (
-                                        <button
-                                            key={sub.id}
-                                            type="button"
-                                            className={classNames("pso-gamemenu-item", {
-                                                "pso-gamemenu-item--active": selected,
-                                            })}
-                                            onClick={() => {
-                                                onPlayUiSound("confirm");
-                                                setActiveSubItemIdx(idx);
-                                            }}
-                                            data-testid={`pso-gamemenu-sub-${sub.id}`}
-                                        >
-                                            <span className="pso-gamemenu-cursor">
-                                                {selected ? "◆" : " "}
-                                            </span>
-                                            <span className="pso-gamemenu-item-label">{sub.label}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Live Mini Vitals Box inside Column 2 */}
-                            <div className="pso-gamemenu-mini-vitals">
-                                <div className="pso-gamemenu-vital-row">
-                                    <span>HP</span>
-                                    <strong>
-                                        {hp} / {maxHp}
-                                    </strong>
-                                </div>
-                                <div className="pso-gamemenu-vital-bar">
-                                    <div
-                                        className="pso-gamemenu-vital-fill pso-gamemenu-vital-fill--hp"
-                                        style={{ width: `${Math.min(100, Math.round((hp / Math.max(1, maxHp)) * 100))}%` }}
-                                    />
-                                </div>
-                                <div className="pso-gamemenu-vital-row">
-                                    <span>TP</span>
-                                    <strong>
-                                        {tp} / {maxTp}
-                                    </strong>
-                                </div>
-                                <div className="pso-gamemenu-vital-bar">
-                                    <div
-                                        className="pso-gamemenu-vital-fill pso-gamemenu-vital-fill--tp"
-                                        style={{ width: `${Math.min(100, Math.round((tp / Math.max(1, maxTp)) * 100))}%` }}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* COLUMN 3: RIGHT DETAIL & LIVE EXECUTION WINDOW */}
-                        <div className="pso-gamemenu-col pso-gamemenu-col--inspector">
-                            <div className="pso-gamemenu-win-header">
-                                <span>{activeSubItem?.label.toUpperCase() || "PIONEER 2 TERMINAL"}</span>
-                                {extractedUnitIconUrl && (
-                                    <img
-                                        src={extractedUnitIconUrl}
-                                        alt=""
-                                        className="pso-gamemenu-uniticon-preview"
-                                    />
-                                )}
-                            </div>
-
-                            <div className="pso-gamemenu-inspector-body">
-                                {/* TAB 1: ITEM PACK (`F2`) */}
-                                {activeTab === "item_pack" && activeSubItemIdx === 0 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            SELECT 3D HUNTER WEAPON (LIVE EQUIP IN LOBBY)
-                                        </div>
-                                        <div className="pso-gamemenu-card-grid">
-                                            {WEAPON_ARSENAL.map((w) => {
-                                                const isEq = w.id === currentWeaponId;
-                                                return (
-                                                    <button
-                                                        key={w.id}
-                                                        type="button"
-                                                        className={classNames("pso-gamemenu-equip-card", {
-                                                            "pso-gamemenu-equip-card--active": isEq,
-                                                        })}
-                                                        onClick={() => {
-                                                            onPlayUiSound("confirm");
-                                                            onSelectWeapon(w.id);
-                                                            setStatusBannerMsg(`Equipped ${w.name} (+${w.atpBonus} ${statLabels.atp})!`);
-                                                        }}
-                                                    >
-                                                        <div className="pso-gamemenu-equip-top">
-                                                            <strong>{w.name}</strong>
-                                                            <span className="pso-gamemenu-equip-badge">
-                                                                {isEq ? "E [EQUIPPED]" : "EQUIP"}
-                                                            </span>
-                                                        </div>
-                                                        <div className="pso-gamemenu-stars">{w.stars}</div>
-                                                        <div className="pso-gamemenu-equip-stats">
-                                                            +{w.atpBonus} {statLabels.atp} &middot; +{w.ataBonus} {statLabels.ata}
-                                                        </div>
-                                                        <div className="pso-gamemenu-equip-desc">{w.desc}</div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === "item_pack" && activeSubItemIdx === 1 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            RECOVERY &amp; SUPPORT TOOLS (`unitxt_e.prs` Cat[1])
-                                        </div>
-                                        <div className="pso-gamemenu-card-grid">
-                                            {(menuSpec?.coreItems && menuSpec.coreItems.length > 0
-                                                ? menuSpec.coreItems.slice(0, 12)
-                                                : [
-                                                      { id: "m1", name: "Monomate", description: "Restores 30% HP." },
-                                                      { id: "m2", name: "Dimate", description: "Restores 60% HP." },
-                                                      { id: "m3", name: "Trimate", description: "Restores 100% HP." },
-                                                      { id: "f1", name: "Monofluid", description: "Restores 30% TP." },
-                                                      { id: "f2", name: "Difluid", description: "Restores 60% TP." },
-                                                      { id: "f3", name: "Trifluid", description: "Restores 100% TP." },
-                                                      { id: "sa", name: "Star Atomizer", description: "Full party HP restore + aura." },
-                                                      { id: "tp", name: "Telepipe", description: "Opens warp pipe to Pioneer 2." },
-                                                  ]
-                                            ).map((item) => (
-                                                <button
-                                                    key={item.id}
-                                                    type="button"
-                                                    className="pso-gamemenu-equip-card"
-                                                    onClick={() => {
-                                                        onPlayUiSound("heal");
-                                                        onUseConsumerItem(item.name);
-                                                        setStatusBannerMsg(`Used ${item.name}!`);
-                                                    }}
-                                                >
-                                                    <div className="pso-gamemenu-equip-top">
-                                                        <strong>🟢 {item.name}</strong>
-                                                        <span className="pso-gamemenu-equip-badge">USE</span>
-                                                    </div>
-                                                    <div className="pso-gamemenu-equip-desc">{item.description}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === "item_pack" && activeSubItemIdx === 2 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            COLLECTED RED BOX RARE DROPS ({rareDrops.length})
-                                        </div>
-                                        {rareDrops.length === 0 ? (
-                                            <div className="pso-gamemenu-empty">
-                                                No Red Box Rare Drops collected in this session yet. Defeat targets in the 3D Lobby or receive party drops!
-                                            </div>
-                                        ) : (
-                                            <div className="pso-gamemenu-card-grid">
-                                                {rareDrops.map((drop, i) => (
-                                                    <div key={`${drop}-${i}`} className="pso-gamemenu-equip-card pso-gamemenu-equip-card--rare">
-                                                        <div className="pso-gamemenu-equip-top">
-                                                            <strong>🟥 {drop}</strong>
-                                                            <span className="pso-gamemenu-equip-badge">SPECIAL WEAPON</span>
-                                                        </div>
-                                                        <div className="pso-gamemenu-stars">★★★★★★★★★★★</div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* TAB 2: TECHNIQUE (`F3`) */}
-                                {activeTab === "technique" && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            LEARNED PSOBB TECHNIQUES (`unitxt_e.prs` Cat[5] &amp; Cat[6])
-                                        </div>
-                                        <div className="pso-gamemenu-card-grid">
-                                            {(menuSpec?.techniques && menuSpec.techniques.length > 0
-                                                ? menuSpec.techniques.filter((_, idx) =>
-                                                      activeSubItemIdx === 0 ? idx < 10 : idx >= 10,
-                                                  )
-                                                : [
-                                                      { id: "t0", name: "Foie", description: "Fireball technique.", tpCost: 5 },
-                                                      { id: "t3", name: "Barta", description: "Ice wave technique.", tpCost: 8 },
-                                                      { id: "t6", name: "Zonde", description: "Lightning bolt technique.", tpCost: 9 },
-                                                      { id: "t9", name: "Grants", description: "Light pillar technique.", tpCost: 25 },
-                                                      { id: "t10", name: "Deband", description: "Boosts party DFP.", tpCost: 15 },
-                                                      { id: "t12", name: "Shifta", description: "Boosts party ATP.", tpCost: 15 },
-                                                      { id: "t14", name: "Resta", description: "Restores party HP.", tpCost: 20 },
-                                                      { id: "t17", name: "Ryuker", description: "Opens warp to Pioneer 2.", tpCost: 10 },
-                                                  ]
-                                            ).map((tech, idx) => (
-                                                <button
-                                                    key={tech.id}
-                                                    type="button"
-                                                    className="pso-gamemenu-equip-card"
-                                                    onClick={() => {
-                                                        onPlayUiSound("tech");
-                                                        onCastTechnique(tech.name, tech.tpCost);
-                                                        setStatusBannerMsg(
-                                                            `Cast ${tech.name} Lv.${20 + (idx % 10)} (-${tech.tpCost} TP)!`,
-                                                        );
-                                                    }}
-                                                >
-                                                    <div className="pso-gamemenu-equip-top">
-                                                        <strong>✨ {tech.name} Lv.{20 + (idx % 10)}</strong>
-                                                        <span className="pso-gamemenu-equip-badge">
-                                                            {tech.tpCost} TP [CAST]
-                                                        </span>
-                                                    </div>
-                                                    <div className="pso-gamemenu-equip-desc">{tech.description}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TAB 3: MAG (`F4`) */}
-                                {activeTab === "mag" && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            EQUIPPED 3D ORBITING MAG // {magStats.name} (LV {magStats.level})
-                                        </div>
-                                        <div className="pso-gamemenu-stat-grid">
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.level}</span>
-                                                <strong>{magStats.level}</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.synchro}</span>
-                                                <strong>{magStats.synchro}%</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.iq}</span>
-                                                <strong>{magStats.iq} / 200</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>DEF / POW / DEX / MIND</span>
-                                                <strong>
-                                                    {magStats.def} / {magStats.pow} / {magStats.dex} / {magStats.mind}
-                                                </strong>
-                                            </div>
-                                        </div>
-
-                                        <div className="pso-gamemenu-subtitle" style={{ marginTop: 12 }}>
-                                            FEED ITEM TO MAG (`Give Items`)
-                                        </div>
-                                        <div className="pso-gamemenu-btn-wrap">
-                                            {(
-                                                [
-                                                    "Monomate",
-                                                    "Dimate",
-                                                    "Trimate",
-                                                    "Monofluid",
-                                                    "Difluid",
-                                                    "Star Atomizer",
-                                                ] as const
-                                            ).map((food) => (
-                                                <button
-                                                    key={food}
-                                                    type="button"
-                                                    className="pso-gamemenu-action-btn"
-                                                    onClick={() => feedMag(food)}
-                                                >
-                                                    🍼 Feed {food}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TAB 4: STATUS (`F10`) */}
-                                {activeTab === "status" && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            HUNTER STATUS &amp; MATRIX TELEMETRY (`unitxt_e.prs` Cat[11][48..69])
-                                        </div>
-                                        <div className="pso-gamemenu-stat-grid">
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.atp}</span>
-                                                <strong>{computedAtp}</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.dfp}</span>
-                                                <strong>{computedDfp}</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.mst}</span>
-                                                <strong>{computedMst}</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.ata}</span>
-                                                <strong>{computedAta}</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.evp}</span>
-                                                <strong>{computedEvp}</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.lck}</span>
-                                                <strong>{computedLck}</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.efr} / {statLabels.eic} / {statLabels.eth}</span>
-                                                <strong>28 / 32 / 25</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>{statLabels.edk} / {statLabels.elt}</span>
-                                                <strong>30 / 35</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>MATRIX HOMESERVER PING</span>
-                                                <strong style={{ color: "#6fffa8" }}>{pingMs} ms</strong>
-                                            </div>
-                                            <div className="pso-gamemenu-stat-box">
-                                                <span>MATRIX ID</span>
-                                                <strong>{userId}</strong>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TAB 5: QUEST / AREA WARP */}
-                                {activeTab === "quest" && activeSubItemIdx === 0 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            RAGOL &amp; PIONEER 2 STAGE TELEPORTER (`data.gsl` `.rel` Maps)
-                                        </div>
-                                        <div className="pso-gamemenu-card-grid">
-                                            {STAGE_OPTIONS.map((st) => {
-                                                const isCurr = st.id === currentStageId;
-                                                return (
-                                                    <button
-                                                        key={st.id}
-                                                        type="button"
-                                                        className={classNames("pso-gamemenu-equip-card", {
-                                                            "pso-gamemenu-equip-card--active": isCurr,
-                                                        })}
-                                                        onClick={() => {
-                                                            onPlayUiSound("confirm");
-                                                            onSelectStage(st.id);
-                                                            if (!isLobby3dOpen) onOpenOrCloseLobby3d(true);
-                                                            setStatusBannerMsg(`Warping to ${st.name} (${st.areaCode})...`);
-                                                        }}
-                                                    >
-                                                        <div className="pso-gamemenu-equip-top">
-                                                            <strong>🟢 {st.name}</strong>
-                                                            <span className="pso-gamemenu-equip-badge">
-                                                                {isCurr ? "CURRENT AREA" : "WARP"}
-                                                            </span>
-                                                        </div>
-                                                        <div className="pso-gamemenu-equip-stats">{st.areaCode}</div>
-                                                        <div className="pso-gamemenu-equip-desc">{st.desc}</div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === "quest" && activeSubItemIdx === 1 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            PIONEER 2 EVENT NPC PLACEMENT (`map_city00_00e*.dat`)
-                                        </div>
-                                        <div className="pso-gamemenu-card-grid">
-                                            {(
-                                                [
-                                                    {
-                                                        id: "e" as PsoCityEventLayoutId,
-                                                        title: "Online Multi-Mode (map_city00_00e.dat)",
-                                                        desc: "21 NPCs including Principal Tyrell, Irene, Momoka, Nurses, Tekker & Shops.",
-                                                    },
-                                                    {
-                                                        id: "e_s" as PsoCityEventLayoutId,
-                                                        title: "Online One-Person Mode (map_city00_00e_s.dat)",
-                                                        desc: "16 NPCs configured for solo questing.",
-                                                    },
-                                                    {
-                                                        id: "e_d" as PsoCityEventLayoutId,
-                                                        title: "Offline Story Default (map_city00_00e_d.dat)",
-                                                        desc: "15 NPCs with Guild Officer at the Hunter's Guild Counter.",
-                                                    },
-                                                    {
-                                                        id: "e_c1" as PsoCityEventLayoutId,
-                                                        title: "Challenge Mode Layout (map_city00_00e_c1.dat)",
-                                                        desc: "16 NPCs with Military Patrol Guard.",
-                                                    },
-                                                ]
-                                            ).map((ly) => (
-                                                <button
-                                                    key={ly.id}
-                                                    type="button"
-                                                    className={classNames("pso-gamemenu-equip-card", {
-                                                        "pso-gamemenu-equip-card--active": currentNpcLayout === ly.id,
-                                                    })}
-                                                    onClick={() => {
-                                                        onPlayUiSound("confirm");
-                                                        onSelectNpcLayout(ly.id);
-                                                        setStatusBannerMsg(`Switched Pioneer 2 NPC layout to ${ly.title}!`);
-                                                    }}
-                                                >
-                                                    <div className="pso-gamemenu-equip-top">
-                                                        <strong>{ly.title}</strong>
-                                                        <span className="pso-gamemenu-equip-badge">
-                                                            {currentNpcLayout === ly.id ? "ACTIVE" : "SELECT"}
-                                                        </span>
-                                                    </div>
-                                                    <div className="pso-gamemenu-equip-desc">{ly.desc}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TAB 6: GUILD CARD (`F5` / `F6` Simple Mail) */}
-                                {activeTab === "guild_card" && activeSubItemIdx === 0 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            GUILD CARD LIST // MATRIX SHIP BLOCKS ({guildRooms.length})
-                                        </div>
-                                        <div className="pso-gamemenu-card-grid">
-                                            {guildRooms.map((room) => (
-                                                <div
-                                                    key={room.roomId}
-                                                    className={classNames("pso-gamemenu-equip-card", {
-                                                        "pso-gamemenu-equip-card--active": room.isCurrent,
-                                                    })}
-                                                >
-                                                    <div className="pso-gamemenu-equip-top">
-                                                        <strong>🪪 {room.name}</strong>
-                                                        <span className="pso-gamemenu-equip-badge">
-                                                            {room.memberCount} HUNTERS
-                                                        </span>
-                                                    </div>
-                                                    <div className="pso-gamemenu-btn-wrap" style={{ marginTop: 8 }}>
-                                                        <button
-                                                            type="button"
-                                                            className="pso-gamemenu-action-btn"
-                                                            onClick={() => {
-                                                                onPlayUiSound("confirm");
-                                                                onSelectGuildRoom(room.roomId);
-                                                                setStatusBannerMsg(
-                                                                    `${menuSpec?.guildCardLabels.meetUser ?? "Meet the User"}: Warped to ${room.name}`,
-                                                                );
-                                                            }}
-                                                        >
-                                                            🚀 {menuSpec?.guildCardLabels.meetUser ?? "Meet the User"}
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="pso-gamemenu-action-btn"
-                                                            onClick={() => {
-                                                                onPlayUiSound("cursor");
-                                                                setMailRecipient(room.name);
-                                                                setActiveSubItemIdx(2);
-                                                            }}
-                                                        >
-                                                            ✉️ {menuSpec?.guildCardLabels.sendMail ?? "Send Mail"}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === "guild_card" && activeSubItemIdx === 1 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            {menuSpec?.guildCardLabels.myCard ?? "MY Card"} // {displayName}
-                                        </div>
-                                        <div className="pso-gamemenu-mycard">
-                                            <div>
-                                                <strong>GUILD CARD NO:</strong> {userId}
-                                            </div>
-                                            <div>
-                                                <strong>CLASS / SECTION ID:</strong> {classNameLabel} &middot;{" "}
-                                                <span style={{ color: sectionIdColor }}>{sectionIdName}</span>
-                                            </div>
-                                            <label className="pso-gamemenu-field-label">
-                                                {menuSpec?.guildCardLabels.editComment ?? "Comment"}:
-                                                <input
-                                                    type="text"
-                                                    className="pso-gamemenu-input"
-                                                    value={guildComment}
-                                                    onChange={(e) => {
-                                                        setGuildComment(e.target.value);
-                                                        try {
-                                                            localStorage.setItem(
-                                                                "mx_pso_guild_card_comment_v1",
-                                                                e.target.value,
-                                                            );
-                                                        } catch {
-                                                            // ignore
-                                                        }
-                                                    }}
-                                                />
-                                            </label>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === "guild_card" && activeSubItemIdx === 2 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            SIMPLE MAIL TRANSMITTER (`F6 : Simple Mail`)
-                                        </div>
-                                        <div className="pso-gamemenu-mycard">
-                                            <div>
-                                                <strong>TO:</strong> {mailRecipient}
-                                            </div>
-                                            <input
-                                                type="text"
-                                                className="pso-gamemenu-input"
-                                                placeholder="Enter Simple Mail message to transmit to active Matrix Room..."
-                                                value={mailDraft}
-                                                onChange={(e) => setMailDraft(e.target.value)}
-                                            />
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    if (!mailDraft.trim()) return;
-                                                    onPlayUiSound("confirm");
-                                                    onSendSimpleMail(mailRecipient, mailDraft.trim());
-                                                    setStatusBannerMsg(`Simple Mail transmitted to ${mailRecipient}!`);
-                                                    setMailDraft("");
-                                                }}
-                                            >
-                                                📨 Transmit Simple Mail
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TAB 7: CHAT (`F7`) */}
-                                {activeTab === "chat" && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            SYMBOL CHAT, ACTION PALETTE &amp; FUNCTION KEY BAR
-                                        </div>
-                                        <div className="pso-gamemenu-btn-wrap">
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("confirm");
-                                                    onToggleOpen(false);
-                                                    onOpenSymbolChatMaker();
-                                                }}
-                                            >
-                                                🎨 Open Symbol Chat Maker (`F7`)
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("confirm");
-                                                    onToggleOpen(false);
-                                                    onOpenHudTuner();
-                                                }}
-                                            >
-                                                ⚙️ Customize 1-0 Hex Action Palette
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("confirm");
-                                                    onToggleFunctionKeyBar();
-                                                }}
-                                            >
-                                                ⌨️ Toggle F1–F12 Function Key Bar ({showFunctionKeyBar ? "ON" : "OFF"})
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TAB 8: TEAM (`F8` / `F9`) */}
-                                {activeTab === "team" && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            TEAM MEMBER LIST &amp; LIVEKIT VOICE COMMS (`F8` / `F9`)
-                                        </div>
-                                        <div className="pso-gamemenu-btn-wrap" style={{ marginBottom: 12 }}>
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("confirm");
-                                                    onToggleVoiceCall();
-                                                }}
-                                            >
-                                                {isVoiceActive ? "📴 Disconnect Voice Comms" : "🎙️ Connect Voice Comms"}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("cursor");
-                                                    onToggleMicMute();
-                                                }}
-                                            >
-                                                {isMicMuted ? "🔇 Mic: MUTED" : "🎙️ Mic: LIVE"}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("cursor");
-                                                    onToggleDeafen();
-                                                }}
-                                            >
-                                                {isDeafened ? "🔕 Audio: DEAFENED" : "🔊 Audio: ACTIVE"}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("confirm");
-                                                    onToggleCompactChat();
-                                                }}
-                                            >
-                                                ▤ Toggle Team Log / Compact Chat (`F9`)
-                                            </button>
-                                        </div>
-
-                                        <div className="pso-gamemenu-card-grid">
-                                            {partyMembers.map((m) => (
-                                                <div
-                                                    key={m.userId}
-                                                    className={classNames("pso-gamemenu-equip-card", {
-                                                        "pso-gamemenu-equip-card--active": m.speaking,
-                                                    })}
-                                                >
-                                                    <div className="pso-gamemenu-equip-top">
-                                                        <strong>
-                                                            {m.speaking ? "🔊 " : m.muted ? "🔇 " : "🟢 "}
-                                                            {m.displayName} {m.local ? "(YOU)" : ""}
-                                                        </strong>
-                                                        <span className="pso-gamemenu-equip-badge">LV {m.level}</span>
-                                                    </div>
-                                                    <div className="pso-gamemenu-equip-stats">
-                                                        HP {m.hpPct}% &middot; TP {m.tpPct}%
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TAB 9: OPTION */}
-                                {activeTab === "option" && activeSubItemIdx === 0 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            PIONEER 2 SOUND &amp; BGM DISK (`data/ogg/*.ogg`)
-                                        </div>
-                                        <div className="pso-gamemenu-btn-wrap">
-                                            {(
-                                                [
-                                                    { id: "CITY.ogg" as PsoBgmTrackId, label: "🎵 CITY.ogg (Pioneer 2)" },
-                                                    { id: "LOBBY.ogg" as PsoBgmTrackId, label: "🎵 LOBBY.ogg (Visual Lobby)" },
-                                                    { id: "GUILD.ogg" as PsoBgmTrackId, label: "🎵 GUILD.ogg (Hunter's Guild)" },
-                                                    { id: "MEDICAL.ogg" as PsoBgmTrackId, label: "🎵 MEDICAL.ogg (Medical Center)" },
-                                                    { id: "SHOP.ogg" as PsoBgmTrackId, label: "🎵 SHOP.ogg (Shopping Plaza)" },
-                                                    { id: "LABO.ogg" as PsoBgmTrackId, label: "🎵 LABO.ogg (Episode II Lab)" },
-                                                    { id: "slbgm_forest.ogg" as PsoBgmTrackId, label: "🎵 slbgm_forest.ogg (Forest)" },
-                                                    { id: "synth" as PsoBgmTrackId, label: "🎹 WebAudio Synth Pad" },
-                                                ]
-                                            ).map((trk) => (
-                                                <button
-                                                    key={trk.id}
-                                                    type="button"
-                                                    className={classNames("pso-gamemenu-action-btn", {
-                                                        "pso-gamemenu-action-btn--active": currentBgmTrack === trk.id,
-                                                    })}
-                                                    onClick={() => {
-                                                        onPlayUiSound("confirm");
-                                                        onSelectBgmTrack(trk.id);
-                                                        setStatusBannerMsg(`Switched BGM Disk to ${trk.label}`);
-                                                    }}
-                                                >
-                                                    {trk.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === "option" && activeSubItemIdx === 1 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            SELECT PLAYABLE 3D HUNTER CLASS (`pl*bdy00.nj` + `pl*tex.afs`)
-                                        </div>
-                                        <div className="pso-gamemenu-card-grid">
-                                            {CLASS_OPTIONS.map((cls) => (
-                                                <button
-                                                    key={cls.id}
-                                                    type="button"
-                                                    className={classNames("pso-gamemenu-equip-card", {
-                                                        "pso-gamemenu-equip-card--active": currentClassId === cls.id,
-                                                    })}
-                                                    onClick={() => {
-                                                        onPlayUiSound("confirm");
-                                                        onSelectClass(cls.id);
-                                                        setStatusBannerMsg(`Changed Hunter Class to ${cls.label} (${cls.race})`);
-                                                    }}
-                                                >
-                                                    <div className="pso-gamemenu-equip-top">
-                                                        <strong>{cls.label}</strong>
-                                                        <span className="pso-gamemenu-equip-badge">
-                                                            {currentClassId === cls.id ? "ACTIVE" : "SELECT"}
-                                                        </span>
-                                                    </div>
-                                                    <div className="pso-gamemenu-equip-desc">{cls.race}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === "option" && activeSubItemIdx === 2 && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            HUD GLASS &amp; NETWORK DISPLAY OPTIONS
-                                        </div>
-                                        <div className="pso-gamemenu-btn-wrap">
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("confirm");
-                                                    onToggleClickThroughGlass();
-                                                }}
-                                            >
-                                                🪟 Click-Through Glass (Alt+G): {isClickThroughGlass ? "ON" : "OFF"}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("confirm");
-                                                    onToggleStreamOverlay();
-                                                }}
-                                            >
-                                                ⟁ Stream Overlay Mode (Alt+O): {isStreamOverlay ? "ON" : "OFF"}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("confirm");
-                                                    onToggleOpen(false);
-                                                    onOpenHudTuner();
-                                                }}
-                                            >
-                                                🎛️ Open Full HUD Glass &amp; Wallpaper Tuner
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TAB 10: QUIT GAME */}
-                                {activeTab === "quit" && (
-                                    <div className="pso-gamemenu-section">
-                                        <div className="pso-gamemenu-subtitle">
-                                            RETURN TO PIONEER 2 OR EXIT 3D VISUAL LOBBY
-                                        </div>
-                                        <div className="pso-gamemenu-btn-wrap">
-                                            <button
-                                                type="button"
-                                                className="pso-gamemenu-action-btn"
-                                                onClick={() => {
-                                                    onPlayUiSound("cancel");
-                                                    onToggleOpen(false);
-                                                }}
-                                            >
-                                                ↩️ Resume Pioneer 2 Session (`F12`)
-                                            </button>
-                                            {isLobby3dOpen && (
-                                                <button
-                                                    type="button"
-                                                    className="pso-gamemenu-action-btn"
-                                                    onClick={() => {
-                                                        onPlayUiSound("cancel");
-                                                        onOpenOrCloseLobby3d(false);
-                                                        onToggleOpen(false);
-                                                    }}
-                                                >
-                                                    🚪 Exit 3D Visual Lobby to 2D Chat
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                    <div className="pso-gm-status-row">
+                        <span>{props.classNameLabel}</span>
+                        <span style={{ color: props.sectionIdColor }}>{props.sectionIdName}</span>
                     </div>
-
-                    {/* Authentic Bottom PSOBB Help Description Box (`unitxt_e.prs` Cat[11][0..47]) */}
-                    <div className="pso-gamemenu-help-footer">
-                        <span className="pso-gamemenu-help-tag">HELP //</span>
-                        <span className="pso-gamemenu-help-text">
-                            {statusBannerMsg || activeSubItem?.helpText || activeTabObj?.helpText}
-                        </span>
+                    <div className="pso-gm-status-row">
+                        <span>Guild Card #</span>
+                        <span>{props.userId}</span>
+                    </div>
+                    <div className="pso-gm-status-row">
+                        <span>Ship</span>
+                        <span>{props.shipName}</span>
                     </div>
                 </div>
-            )}
-        </>
+            );
+        case "simple_mail":
+            return (
+                <form
+                    className="pso-gm-form"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!mailTarget.trim() || !mailText.trim()) return;
+                        props.onSendSimpleMail(mailTarget.trim(), mailText.trim());
+                        props.onPlayUiSound("confirm");
+                        setMailText("");
+                    }}
+                >
+                    <label>
+                        To
+                        <input value={mailTarget} onChange={(e) => setMailTarget(e.target.value)} placeholder="@user:server" />
+                    </label>
+                    <label>
+                        Message
+                        <input value={mailText} onChange={(e) => setMailText(e.target.value)} maxLength={140} />
+                    </label>
+                    <button type="submit" className="pso-gm-list-item">
+                        <span>Send</span>
+                    </button>
+                </form>
+            );
+        case "team_list":
+            return (
+                <>
+                    <div className="pso-gm-list">
+                        {props.partyMembers.length ? (
+                            props.partyMembers.map((m) => (
+                                <div key={m.userId} className="pso-gm-list-item">
+                                    <span>
+                                        {m.speaking ? "♪ " : ""}
+                                        {m.displayName}
+                                        {m.local ? " (you)" : ""}
+                                    </span>
+                                    <span className="pso-gm-list-meta">
+                                        {m.muted ? "muted · " : ""}Lv {m.level}
+                                    </span>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="pso-gm-text">No other members here.</div>
+                        )}
+                    </div>
+                    <div className="pso-gm-toggles">
+                        <button type="button" className="pso-gm-list-item" onClick={props.onToggleVoiceCall}>
+                            <span>{props.isVoiceActive ? "Leave voice" : "Join voice"}</span>
+                        </button>
+                        <button type="button" className="pso-gm-list-item" onClick={props.onToggleMicMute}>
+                            <span>{props.isMicMuted ? "Unmute mic" : "Mute mic"}</span>
+                        </button>
+                        <button type="button" className="pso-gm-list-item" onClick={props.onToggleDeafen}>
+                            <span>{props.isDeafened ? "Undeafen" : "Deafen"}</span>
+                        </button>
+                    </div>
+                </>
+            );
+        case "sound_bgm":
+            return (
+                <div className="pso-gm-list">
+                    {BGM_TRACKS.map((t) => (
+                        <button
+                            key={t.id}
+                            type="button"
+                            className={classNames("pso-gm-list-item", { "pso-gm-list-item--on": props.currentBgmTrack === t.id })}
+                            onClick={() => {
+                                props.onSelectBgmTrack(t.id);
+                                props.onPlayUiSound("confirm");
+                            }}
+                        >
+                            <span>{t.label}</span>
+                        </button>
+                    ))}
+                </div>
+            );
+        case "display":
+            return (
+                <div className="pso-gm-list">
+                    <button type="button" className="pso-gm-list-item" onClick={props.onToggleCompactChat}>
+                        <span>Compact chat</span>
+                        <span className="pso-gm-list-meta">{props.isCompactChat ? "ON" : "OFF"}</span>
+                    </button>
+                    <button type="button" className="pso-gm-list-item" onClick={props.onToggleClickThroughGlass}>
+                        <span>Click-through glass</span>
+                        <span className="pso-gm-list-meta">{props.isClickThroughGlass ? "ON" : "OFF"}</span>
+                    </button>
+                    <button type="button" className="pso-gm-list-item" onClick={props.onToggleStreamOverlay}>
+                        <span>Stream overlay</span>
+                        <span className="pso-gm-list-meta">{props.isStreamOverlay ? "ON" : "OFF"}</span>
+                    </button>
+                    <button type="button" className="pso-gm-list-item" onClick={props.onToggleFunctionKeyBar}>
+                        <span>Function key bar</span>
+                        <span className="pso-gm-list-meta">{props.showFunctionKeyBar ? "ON" : "OFF"}</span>
+                    </button>
+                </div>
+            );
+    }
+};
+
+const FALLBACK_FKEY_LABELS = [
+    "Help",
+    "Item Pack",
+    "Technique",
+    "Mag",
+    "Guild Card",
+    "Simple Mail",
+    "Symbol Chat",
+    "Team",
+    "Chat Log",
+    "Chat",
+    "Fullscreen",
+    "Main Menu",
+];
+
+/** PSOBB-style F1-F12 strip along the bottom of the window. */
+export const PsoFunctionKeyBar: React.FC<{
+    visible: boolean;
+    onPressKey: (index: number) => void;
+}> = ({ visible, onPressKey }) => {
+    const [labels, setLabels] = useState<string[]>(FALLBACK_FKEY_LABELS);
+    useEffect(() => {
+        let cancelled = false;
+        void loadCompiledGamePack().then((pack) => {
+            const spec = pack.uiMenuSpec;
+            if (!cancelled && spec?.uiSpecVersion === 2 && spec.functionKeyLabels?.length === 12) {
+                setLabels(spec.functionKeyLabels.map((l, i) => l || FALLBACK_FKEY_LABELS[i]));
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+    if (!visible) return null;
+    return (
+        <div className="pso-fkey-strip pso-interactive" data-testid="pso-fkey-strip">
+            {labels.map((label, index) => (
+                <button key={index} type="button" className="pso-fkey-chip" onClick={() => onPressKey(index)}>
+                    <span className="pso-fkey-badge">F{index + 1}</span>
+                    <span>{label}</span>
+                </button>
+            ))}
+        </div>
     );
 };

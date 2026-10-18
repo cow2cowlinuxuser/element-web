@@ -287,6 +287,10 @@ interface PsoLobby3dLayerProps {
     incomingWorldAction?: PsoLobbyWorldAction | null;
     initialHunterState?: Partial<PsoPersistedHunterState>;
     onPersistHunterState?: (state: PsoPersistedHunterState) => void;
+    /** Receives the 3D viewport element so HUD windows can be anchored inside the game view. */
+    onViewportElementChange?: (el: HTMLDivElement | null) => void;
+    /** While true (e.g. the main menu is open) the lobby ignores keyboard input entirely. */
+    isInputSuspended?: boolean;
     onClose: () => void;
     onMouseEnter?: () => void;
     onMouseLeave?: () => void;
@@ -2198,11 +2202,15 @@ export function PsoLobby3dLayer({
     incomingWorldAction,
     initialHunterState,
     onPersistHunterState,
+    onViewportElementChange,
+    isInputSuspended = false,
     onClose,
     onMouseEnter,
     onMouseLeave,
 }: PsoLobby3dLayerProps): JSX.Element {
     const modalRootRef = useRef<HTMLDivElement | null>(null);
+    const isInputSuspendedRef = useRef(isInputSuspended);
+    isInputSuspendedRef.current = isInputSuspended;
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const lobbyChatInputRef = useRef<HTMLInputElement | null>(null);
     const modelFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -3131,6 +3139,10 @@ export function PsoLobby3dLayer({
     // Keyboard & Focus Router (Capture-phase so Element's LoggedInView NEVER hijacks keys into the background chat composer while 3D Lobby is in WORLD_FOCUS!)
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent): void => {
+            if (isInputSuspendedRef.current) {
+                simRef.current.keys.clear();
+                return;
+            }
             const target = e.target as HTMLElement | null;
             const inLobbyChatInput =
                 target === lobbyChatInputRef.current || document.activeElement === lobbyChatInputRef.current;
@@ -3152,6 +3164,8 @@ export function PsoLobby3dLayer({
                 if (activeChatSourceRef.current === "external_chat" || inExternalComposer) {
                     return;
                 }
+
+                if (/^F([1-9]|1[0-2])$/.test(e.key)) return;
 
                 // Otherwise the user is in the 3D Lobby's `SAY >` bar: keep focus there and stop LoggedInView from stealing keys
                 if (document.activeElement !== lobbyChatInputRef.current && lobbyChatInputRef.current) {
@@ -4695,7 +4709,7 @@ export function PsoLobby3dLayer({
             </div>
 
             {/* Main 3D WebGL Viewport + Projected 3D Nameplates & Rare Drop Feed */}
-            <div className="pso-lobby3d-viewport-wrap">
+            <div className="pso-lobby3d-viewport-wrap" ref={onViewportElementChange}>
                 <canvas
                     ref={canvasRef}
                     tabIndex={0}

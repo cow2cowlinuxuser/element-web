@@ -91,78 +91,42 @@ export interface PsoCompiledAircarLane {
     dir: 1 | -1;
 }
 
-export interface PsoCompiledFunctionKeyLabel {
-    key: string;
-    rawLabel: string;
-    actionId: string;
-}
-
-export interface PsoCompiledMenuSubItem {
-    id: string;
-    label: string;
-    helpText: string;
-}
-
-export interface PsoCompiledMainMenuTab {
-    id: string;
-    label: string;
-    shortcut: string;
-    helpText: string;
-    subItems: PsoCompiledMenuSubItem[];
-}
-
-export interface PsoCompiledTechniqueEntry {
-    id: string;
-    name: string;
-    description: string;
-    tpCost: number;
-}
-
-export interface PsoCompiledCoreItemEntry {
+export interface PsoCompiledUiEntry {
     id: string;
     name: string;
     description: string;
 }
 
+/** Compiled from `unitxt_e.prs`. Only trusted when `uiSpecVersion === 2` (earlier packs used wrong string indices). */
 export interface PsoCompiledUiMenuSpec {
-    functionKeyLabels: PsoCompiledFunctionKeyLabel[];
-    mainMenuTabs: PsoCompiledMainMenuTab[];
-    statLabels: {
-        atp: string;
-        dfp: string;
-        mst: string;
-        ata: string;
-        evp: string;
-        lck: string;
-        level: string;
-        exp: string;
-        synchro: string;
-        iq: string;
-        efr: string;
-        eic: string;
-        eth: string;
-        edk: string;
-        elt: string;
-        nextLevel: string;
-        meseta: string;
-    };
-    guildCardLabels: {
-        cardString: string;
-        myCard: string;
-        cardList: string;
-        search: string;
-        sendCard: string;
-        meetUser: string;
-        deleteCard: string;
-        editComment: string;
-        sortOrder: string;
-        sendMail: string;
-    };
+    uiSpecVersion: number;
+    functionKeyLabels: string[];
+    helpTexts: Record<string, string>;
+    statLabels: Record<
+        | "totalExp"
+        | "toNextLv"
+        | "money"
+        | "atp"
+        | "dfp"
+        | "mst"
+        | "ata"
+        | "evp"
+        | "lck"
+        | "efr"
+        | "eic"
+        | "eth"
+        | "edk"
+        | "elt"
+        | "magLevel"
+        | "synchro"
+        | "iq"
+        | "meseta",
+        string
+    >;
     classNames: string[];
     sectionIds: string[];
-    areaNames: string[];
-    techniques: PsoCompiledTechniqueEntry[];
-    coreItems: PsoCompiledCoreItemEntry[];
+    techniques: PsoCompiledUiEntry[];
+    toolItems: PsoCompiledUiEntry[];
     uiXvmSheets: Record<string, string>;
 }
 
@@ -278,6 +242,8 @@ export interface PsoDecodedXvrTexture {
 }
 
 const cachedXvmSheets = new Map<string, PsoDecodedXvrTexture[]>();
+const cachedXvmPixels = new Map<string, Array<{ width: number; height: number; rgba: Uint8Array }>>();
+const cachedSprites = new Map<string, string>();
 
 function decodeSingleXvrToRgba(
     view: DataView,
@@ -393,6 +359,7 @@ export async function loadPsoUiXvmSheet(url: string): Promise<PsoDecodedXvrTextu
         const view = new DataView(buffer);
         const bytes = new Uint8Array(buffer);
         const out: PsoDecodedXvrTexture[] = [];
+        const pixels: Array<{ width: number; height: number; rgba: Uint8Array }> = [];
 
         let pos = 0;
         let texIndex = 0;
@@ -411,6 +378,7 @@ export async function loadPsoUiXvmSheet(url: string): Promise<PsoDecodedXvrTextu
 
                 if (w >= 8 && h >= 8 && w <= 2048 && h <= 2048) {
                     const rgba = decodeSingleXvrToRgba(view, bytes, pos, w, h, fmt);
+                    pixels[texIndex] = { width: w, height: h, rgba };
                     const canvas = document.createElement("canvas");
                     canvas.width = w;
                     canvas.height = h;
@@ -438,10 +406,44 @@ export async function loadPsoUiXvmSheet(url: string): Promise<PsoDecodedXvrTextu
 
         if (out.length > 0) {
             cachedXvmSheets.set(url, out);
+            cachedXvmPixels.set(url, pixels);
         }
         return out;
     } catch {
         return [];
     }
+}
+
+/**
+ * Crops one sprite out of a texture inside an extracted `.xvm` sheet and returns it as a PNG data URL.
+ * `rect` is `[x, y, width, height]` in texture pixels. Returns null if the sheet is not available.
+ */
+export async function loadPsoUiSprite(
+    sheetUrl: string,
+    texIndex: number,
+    rect: readonly [number, number, number, number],
+): Promise<string | null> {
+    const key = `${sheetUrl}#${texIndex}@${rect.join(",")}`;
+    const cached = cachedSprites.get(key);
+    if (cached) return cached;
+    await loadPsoUiXvmSheet(sheetUrl);
+    const tex = cachedXvmPixels.get(sheetUrl)?.[texIndex];
+    if (!tex) return null;
+    const [sx, sy, sw, sh] = rect;
+    const canvas = document.createElement("canvas");
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const img = ctx.createImageData(sw, sh);
+    for (let y = 0; y < sh; y++) {
+        const srcRow = (sy + y) * tex.width + sx;
+        if (sy + y >= tex.height) break;
+        img.data.set(tex.rgba.subarray(srcRow * 4, (srcRow + Math.min(sw, tex.width - sx)) * 4), y * sw * 4);
+    }
+    ctx.putImageData(img, 0, 0);
+    const url = canvas.toDataURL("image/png");
+    cachedSprites.set(key, url);
+    return url;
 }
 
