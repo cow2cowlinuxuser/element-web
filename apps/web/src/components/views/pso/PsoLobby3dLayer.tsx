@@ -2388,6 +2388,20 @@ export function PsoLobby3dLayer({
         weaponId,
     };
 
+    // Sync weapon/class/stage changes coming from the F12 PSOBB Full Game Menu (`initialHunterState`)
+    useEffect(() => {
+        if (initialHunterState?.classId && initialHunterState.classId !== classId) {
+            setClassId(initialHunterState.classId);
+        }
+        if (initialHunterState?.weaponId && initialHunterState.weaponId !== weaponId) {
+            setWeaponId(initialHunterState.weaponId);
+        }
+        if (initialHunterState?.stageId && initialHunterState.stageId !== stageId) {
+            setStageId(initialHunterState.stageId);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialHunterState?.classId, initialHunterState?.weaponId, initialHunterState?.stageId]);
+
     // Persist local Hunter state (position, facing, camera, class, weapon, chair, stage, Meseta) continuously and on unmount!
     useEffect(() => {
         const saveNow = (): void => {

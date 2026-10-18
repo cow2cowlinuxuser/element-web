@@ -91,6 +91,81 @@ export interface PsoCompiledAircarLane {
     dir: 1 | -1;
 }
 
+export interface PsoCompiledFunctionKeyLabel {
+    key: string;
+    rawLabel: string;
+    actionId: string;
+}
+
+export interface PsoCompiledMenuSubItem {
+    id: string;
+    label: string;
+    helpText: string;
+}
+
+export interface PsoCompiledMainMenuTab {
+    id: string;
+    label: string;
+    shortcut: string;
+    helpText: string;
+    subItems: PsoCompiledMenuSubItem[];
+}
+
+export interface PsoCompiledTechniqueEntry {
+    id: string;
+    name: string;
+    description: string;
+    tpCost: number;
+}
+
+export interface PsoCompiledCoreItemEntry {
+    id: string;
+    name: string;
+    description: string;
+}
+
+export interface PsoCompiledUiMenuSpec {
+    functionKeyLabels: PsoCompiledFunctionKeyLabel[];
+    mainMenuTabs: PsoCompiledMainMenuTab[];
+    statLabels: {
+        atp: string;
+        dfp: string;
+        mst: string;
+        ata: string;
+        evp: string;
+        lck: string;
+        level: string;
+        exp: string;
+        synchro: string;
+        iq: string;
+        efr: string;
+        eic: string;
+        eth: string;
+        edk: string;
+        elt: string;
+        nextLevel: string;
+        meseta: string;
+    };
+    guildCardLabels: {
+        cardString: string;
+        myCard: string;
+        cardList: string;
+        search: string;
+        sendCard: string;
+        meetUser: string;
+        deleteCard: string;
+        editComment: string;
+        sortOrder: string;
+        sendMail: string;
+    };
+    classNames: string[];
+    sectionIds: string[];
+    areaNames: string[];
+    techniques: PsoCompiledTechniqueEntry[];
+    coreItems: PsoCompiledCoreItemEntry[];
+    uiXvmSheets: Record<string, string>;
+}
+
 export interface PsoCompiledGamePack {
     schemaVersion: number;
     generatedAt: string;
@@ -102,6 +177,7 @@ export interface PsoCompiledGamePack {
     cityNpcLayouts: Partial<Record<PsoCityEventLayoutId, PsoCompiledNpcPlacement[]>>;
     cityStageObjects: PsoCompiledStageObjectPlacement[];
     cityAircarLanes: PsoCompiledAircarLane[];
+    uiMenuSpec?: PsoCompiledUiMenuSpec;
 }
 
 /**
@@ -191,3 +267,181 @@ export async function loadCompiledGamePack(url = "media/pso/game-pack.json"): Pr
     }
     return FALLBACK_PROCEDURAL_GAME_PACK;
 }
+
+export interface PsoDecodedXvrTexture {
+    index: number;
+    texId: number;
+    width: number;
+    height: number;
+    fmt: number;
+    dataUrl: string;
+}
+
+const cachedXvmSheets = new Map<string, PsoDecodedXvrTexture[]>();
+
+function decodeSingleXvrToRgba(
+    view: DataView,
+    bytes: Uint8Array,
+    xvrOffset: number,
+    width: number,
+    height: number,
+    fmt: number,
+): Uint8Array {
+    const rgba = new Uint8Array(width * height * 4);
+    const dataStart = xvrOffset + 64;
+    if (fmt === 6 || fmt === 7) {
+        const isDxt3 = fmt === 7;
+        const blockSize = isDxt3 ? 16 : 8;
+        const blocksX = Math.max(1, width >> 2);
+        const blocksY = Math.max(1, height >> 2);
+        let bOff = dataStart;
+
+        for (let by = 0; by < blocksY; by++) {
+            for (let bx = 0; bx < blocksX; bx++) {
+                if (bOff + blockSize > bytes.byteLength) break;
+                const alphaLow = isDxt3 ? view.getUint32(bOff, true) : 0xffffffff;
+                const alphaHigh = isDxt3 ? view.getUint32(bOff + 4, true) : 0xffffffff;
+                const cOff = isDxt3 ? bOff + 8 : bOff;
+                const c0 = view.getUint16(cOff, true);
+                const c1 = view.getUint16(cOff + 2, true);
+                const lut = view.getUint32(cOff + 4, true);
+
+                const r0 = ((c0 >> 11) & 31) * (255 / 31);
+                const g0 = ((c0 >> 5) & 63) * (255 / 63);
+                const b0 = (c0 & 31) * (255 / 31);
+                const r1 = ((c1 >> 11) & 31) * (255 / 31);
+                const g1 = ((c1 >> 5) & 63) * (255 / 63);
+                const b1 = (c1 & 31) * (255 / 31);
+
+                for (let py = 0; py < 4; py++) {
+                    for (let px = 0; px < 4; px++) {
+                        const pIdx = py * 4 + px;
+                        const code = (lut >>> (pIdx * 2)) & 3;
+                        let r = r0;
+                        let g = g0;
+                        let b = b0;
+                        let a = 255;
+
+                        if (isDxt3) {
+                            const alphaWord = pIdx < 8 ? alphaLow : alphaHigh;
+                            const shift = (pIdx & 7) * 4;
+                            a = ((alphaWord >>> shift) & 0x0f) * 17;
+                        }
+
+                        if (c0 > c1 || isDxt3) {
+                            if (code === 1) {
+                                r = r1;
+                                g = g1;
+                                b = b1;
+                            } else if (code === 2) {
+                                r = (2 * r0 + r1) / 3;
+                                g = (2 * g0 + g1) / 3;
+                                b = (2 * b0 + b1) / 3;
+                            } else if (code === 3) {
+                                r = (r0 + 2 * r1) / 3;
+                                g = (g0 + 2 * g1) / 3;
+                                b = (b0 + 2 * b1) / 3;
+                            }
+                        } else {
+                            if (code === 1) {
+                                r = r1;
+                                g = g1;
+                                b = b1;
+                            } else if (code === 2) {
+                                r = (r0 + r1) * 0.5;
+                                g = (g0 + g1) * 0.5;
+                                b = (b0 + b1) * 0.5;
+                            } else if (code === 3) {
+                                r = 0;
+                                g = 0;
+                                b = 0;
+                                if (!isDxt3) a = 0;
+                            }
+                        }
+
+                        const dstX = bx * 4 + px;
+                        const dstY = by * 4 + py;
+                        if (dstX < width && dstY < height) {
+                            const dst = (dstY * width + dstX) * 4;
+                            rgba[dst] = r;
+                            rgba[dst + 1] = g;
+                            rgba[dst + 2] = b;
+                            rgba[dst + 3] = a;
+                        }
+                    }
+                }
+                bOff += blockSize;
+            }
+        }
+    }
+    return rgba;
+}
+
+/**
+ * Decodes an extracted PSOBB `.xvm` UI texture archive (`media/pso/ui/*.xvm`)
+ * into browser `data:image/png` URLs with full DXT1/DXT3 alpha channel support.
+ */
+export async function loadPsoUiXvmSheet(url: string): Promise<PsoDecodedXvrTexture[]> {
+    const cached = cachedXvmSheets.get(url);
+    if (cached) return cached;
+    if (typeof document === "undefined") return [];
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const buffer = await res.arrayBuffer();
+        const view = new DataView(buffer);
+        const bytes = new Uint8Array(buffer);
+        const out: PsoDecodedXvrTexture[] = [];
+
+        let pos = 0;
+        let texIndex = 0;
+        while (pos + 64 <= bytes.byteLength) {
+            if (
+                bytes[pos] === 0x58 && // 'X'
+                bytes[pos + 1] === 0x56 && // 'V'
+                bytes[pos + 2] === 0x52 && // 'R'
+                bytes[pos + 3] === 0x54 // 'T'
+            ) {
+                const chunkLen = view.getUint32(pos + 4, true);
+                const fmt = view.getUint32(pos + 12, true);
+                const texId = view.getUint32(pos + 16, true);
+                const w = view.getUint16(pos + 20, true);
+                const h = view.getUint16(pos + 22, true);
+
+                if (w >= 8 && h >= 8 && w <= 2048 && h <= 2048) {
+                    const rgba = decodeSingleXvrToRgba(view, bytes, pos, w, h, fmt);
+                    const canvas = document.createElement("canvas");
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext("2d");
+                    if (ctx) {
+                        const imgData = ctx.createImageData(w, h);
+                        imgData.data.set(rgba);
+                        ctx.putImageData(imgData, 0, 0);
+                        out.push({
+                            index: texIndex,
+                            texId,
+                            width: w,
+                            height: h,
+                            fmt,
+                            dataUrl: canvas.toDataURL("image/png"),
+                        });
+                    }
+                }
+                texIndex++;
+                pos += Math.max(64, chunkLen + 8);
+            } else {
+                pos += 4;
+            }
+        }
+
+        if (out.length > 0) {
+            cachedXvmSheets.set(url, out);
+        }
+        return out;
+    } catch {
+        return [];
+    }
+}
+

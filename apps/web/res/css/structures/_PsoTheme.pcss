@@ -2798,3 +2798,506 @@ body.pso-compact-chat-mode .mx_EventTile[data-layout] .mx_EventTile_line:has(.mx
     letter-spacing: 0.05em;
 }
 
+/* ============================================================================
+ * EXTRACTED PSOBB FULL GAME MENU (`F12` Main Menu + `F1`–`F11` Function Keys)
+ * ============================================================================ */
+
+.pso-fkey-strip {
+    position: fixed;
+    top: 34px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 99985;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: linear-gradient(180deg, rgb(6, 26, 38, 0.94) 0%, rgb(2, 12, 20, 0.96) 100%);
+    border: 1.5px solid #58cfc9;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 6px 20px rgb(0, 0, 0, 0.75), inset 0 0 12px rgb(88, 207, 201, 0.22);
+    pointer-events: auto;
+}
+
+.pso-fkey-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    background: rgb(8, 34, 48, 0.85);
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    border-radius: 4px;
+    color: #d6fbff;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.pso-fkey-chip:hover,
+.pso-fkey-chip--active {
+    background: linear-gradient(180deg, rgb(24, 96, 118, 0.95) 0%, rgb(12, 54, 70, 0.98) 100%);
+    border-color: #ffe26a;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgb(255, 226, 106, 0.4);
+}
+
+.pso-fkey-badge {
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgb(255, 210, 74, 0.2);
+    border: 1px solid rgb(255, 210, 74, 0.65);
+    color: #ffe26a;
+    font-size: 9.5px;
+    font-weight: 800;
+}
+
+.pso-gamemenu-backdrop {
+    position: fixed;
+    inset: 38px 18px 54px 18px;
+    z-index: 99990;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px;
+    background: radial-gradient(circle at 20% 20%, rgb(12, 52, 72, 0.94) 0%, rgb(3, 14, 24, 0.97) 100%);
+    border: 2px solid #68e8e2;
+    border-radius: 10px;
+    box-shadow:
+        0 20px 60px rgb(0, 0, 0, 0.88),
+        inset 0 0 28px rgb(88, 207, 201, 0.24),
+        0 0 0 1px rgb(255, 255, 255, 0.12);
+    pointer-events: auto;
+    color: #e4fcff;
+    overflow: hidden;
+}
+
+.pso-gamemenu-top-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 14px;
+    background: linear-gradient(90deg, rgb(12, 58, 78, 0.95) 0%, rgb(6, 26, 40, 0.92) 65%, rgb(18, 68, 86, 0.95) 100%);
+    border: 1.5px solid #58cfc9;
+    border-radius: 6px;
+    box-shadow: inset 0 0 14px rgb(88, 207, 201, 0.25);
+}
+
+.pso-gamemenu-top-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pso-gamemenu-xvm-emblem {
+    width: 34px;
+    height: 34px;
+    border-radius: 4px;
+    border: 1px solid #8ae3dd;
+    background: rgb(0, 0, 0, 0.45);
+    image-rendering: pixelated;
+}
+
+.pso-gamemenu-ship-tag {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: #8ae3dd;
+}
+
+.pso-gamemenu-hunter-tag {
+    font-size: 13px;
+    color: #ffffff;
+}
+
+.pso-gamemenu-meseta {
+    color: #ffe26a;
+    font-weight: 800;
+}
+
+.pso-gamemenu-top-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pso-gamemenu-quick-pill,
+.pso-gamemenu-close-btn {
+    padding: 5px 12px;
+    border-radius: 5px;
+    border: 1.5px solid #58cfc9;
+    background: rgb(8, 36, 50, 0.9);
+    color: #d8fbff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.pso-gamemenu-quick-pill--active,
+.pso-gamemenu-quick-pill:hover {
+    background: rgb(22, 108, 92, 0.92);
+    border-color: #6fffa8;
+    color: #ffffff;
+}
+
+.pso-gamemenu-close-btn:hover {
+    background: rgb(148, 32, 42, 0.92);
+    border-color: #ff9a9a;
+    color: #ffffff;
+}
+
+.pso-gamemenu-cascade {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 220px 250px 1fr;
+    gap: 12px;
+}
+
+.pso-gamemenu-col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: linear-gradient(180deg, rgb(6, 28, 42, 0.92) 0%, rgb(3, 14, 24, 0.95) 100%);
+    border: 1.5px solid #58cfc9;
+    border-radius: 7px;
+    box-shadow: inset 0 0 16px rgb(88, 207, 201, 0.16);
+    overflow: hidden;
+}
+
+.pso-gamemenu-win-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 12px;
+    background: linear-gradient(90deg, rgb(18, 78, 98, 0.95) 0%, rgb(8, 36, 52, 0.95) 100%);
+    border-bottom: 1.5px solid #58cfc9;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #ffe26a;
+}
+
+.pso-gamemenu-win-sub {
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgb(0, 0, 0, 0.45);
+    border: 1px solid rgb(138, 227, 221, 0.5);
+    color: #8ae3dd;
+    font-size: 10px;
+}
+
+.pso-gamemenu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px;
+    overflow-y: auto;
+}
+
+.pso-gamemenu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    background: rgb(8, 32, 46, 0.65);
+    color: #d6f8ff;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.1s ease;
+}
+
+.pso-gamemenu-item:hover {
+    background: rgb(16, 64, 86, 0.85);
+    border-color: rgb(138, 227, 221, 0.6);
+}
+
+.pso-gamemenu-item--active {
+    background: linear-gradient(90deg, rgb(28, 112, 134, 0.95) 0%, rgb(14, 58, 78, 0.95) 100%);
+    border-color: #ffe26a;
+    color: #ffffff;
+    box-shadow: 0 0 12px rgb(255, 226, 106, 0.28);
+}
+
+.pso-gamemenu-cursor {
+    width: 14px;
+    color: #ffe26a;
+    font-weight: 900;
+}
+
+.pso-gamemenu-item-label {
+    flex: 1;
+}
+
+.pso-gamemenu-item-shortcut {
+    font-size: 10px;
+    color: #8ae3dd;
+    opacity: 0.85;
+}
+
+.pso-gamemenu-xvm-strip {
+    margin-top: auto;
+    padding: 6px 8px;
+    border-top: 1px solid rgb(88, 207, 201, 0.35);
+    background: rgb(2, 10, 16, 0.8);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 9.5px;
+    color: #8ae3dd;
+}
+
+.pso-gamemenu-xvm-strip img {
+    width: 36px;
+    height: 24px;
+    object-fit: cover;
+    border: 1px solid rgb(88, 207, 201, 0.5);
+    border-radius: 3px;
+}
+
+.pso-gamemenu-mini-vitals {
+    margin-top: auto;
+    padding: 10px 12px;
+    border-top: 1px solid rgb(88, 207, 201, 0.35);
+    background: rgb(4, 18, 28, 0.85);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11px;
+}
+
+.pso-gamemenu-vital-row {
+    display: flex;
+    justify-content: space-between;
+    color: #8ae3dd;
+}
+
+.pso-gamemenu-vital-bar {
+    height: 7px;
+    border-radius: 4px;
+    background: rgb(0, 0, 0, 0.65);
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    overflow: hidden;
+}
+
+.pso-gamemenu-vital-fill--hp {
+    height: 100%;
+    background: linear-gradient(90deg, #2be876, #8dffb8);
+}
+
+.pso-gamemenu-vital-fill--tp {
+    height: 100%;
+    background: linear-gradient(90deg, #28a8ff, #8ae3ff);
+}
+
+.pso-gamemenu-uniticon-preview {
+    width: 22px;
+    height: 22px;
+    object-fit: cover;
+    border-radius: 3px;
+    border: 1px solid rgb(138, 227, 221, 0.6);
+}
+
+.pso-gamemenu-inspector-body {
+    flex: 1;
+    padding: 12px 14px;
+    overflow-y: auto;
+}
+
+.pso-gamemenu-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.pso-gamemenu-subtitle {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #8ae3dd;
+    border-bottom: 1px dashed rgb(88, 207, 201, 0.35);
+    padding-bottom: 4px;
+}
+
+.pso-gamemenu-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 8px;
+}
+
+.pso-gamemenu-equip-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 9px 11px;
+    border-radius: 6px;
+    border: 1px solid rgb(88, 207, 201, 0.45);
+    background: rgb(8, 32, 48, 0.78);
+    color: #e4fcff;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.pso-gamemenu-equip-card:hover,
+.pso-gamemenu-equip-card--active {
+    background: linear-gradient(180deg, rgb(20, 78, 102, 0.92) 0%, rgb(10, 40, 58, 0.96) 100%);
+    border-color: #ffe26a;
+    box-shadow: 0 0 12px rgb(255, 226, 106, 0.25);
+}
+
+.pso-gamemenu-equip-card--rare {
+    border-color: #ff5e5e;
+    background: linear-gradient(180deg, rgb(72, 16, 24, 0.88) 0%, rgb(36, 8, 14, 0.94) 100%);
+}
+
+.pso-gamemenu-equip-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.pso-gamemenu-equip-badge {
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgb(255, 226, 106, 0.18);
+    border: 1px solid rgb(255, 226, 106, 0.65);
+    color: #ffe26a;
+    font-size: 9.5px;
+    font-weight: 800;
+}
+
+.pso-gamemenu-stars {
+    color: #ffd447;
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+
+.pso-gamemenu-equip-stats {
+    font-size: 11px;
+    font-weight: 700;
+    color: #6fffa8;
+}
+
+.pso-gamemenu-equip-desc {
+    font-size: 11px;
+    color: #b4e6ee;
+    line-height: 1.35;
+}
+
+.pso-gamemenu-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+    gap: 8px;
+}
+
+.pso-gamemenu-stat-box {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px 10px;
+    border-radius: 5px;
+    background: rgb(6, 26, 38, 0.85);
+    border: 1px solid rgb(88, 207, 201, 0.4);
+}
+
+.pso-gamemenu-stat-box span {
+    font-size: 10px;
+    color: #8ae3dd;
+    font-weight: 700;
+}
+
+.pso-gamemenu-stat-box strong {
+    font-size: 14px;
+    color: #ffe26a;
+}
+
+.pso-gamemenu-btn-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.pso-gamemenu-action-btn {
+    padding: 7px 12px;
+    border-radius: 5px;
+    border: 1px solid #58cfc9;
+    background: rgb(12, 48, 68, 0.9);
+    color: #e4fcff;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.pso-gamemenu-action-btn:hover,
+.pso-gamemenu-action-btn--active {
+    background: rgb(28, 106, 128, 0.95);
+    border-color: #ffe26a;
+    color: #ffffff;
+}
+
+.pso-gamemenu-mycard {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid rgb(88, 207, 201, 0.5);
+    background: rgb(6, 24, 36, 0.88);
+    font-size: 12px;
+}
+
+.pso-gamemenu-field-label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-weight: 700;
+    color: #8ae3dd;
+}
+
+.pso-gamemenu-input {
+    padding: 7px 10px;
+    border-radius: 4px;
+    border: 1px solid #58cfc9;
+    background: rgb(2, 12, 20, 0.92);
+    color: #ffffff;
+    font-size: 12px;
+}
+
+.pso-gamemenu-help-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: linear-gradient(90deg, rgb(10, 44, 62, 0.95) 0%, rgb(4, 20, 32, 0.95) 100%);
+    border: 1.5px solid #58cfc9;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.pso-gamemenu-help-tag {
+    color: #ffe26a;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.pso-gamemenu-help-text {
+    color: #ffffff;
+}
+
+

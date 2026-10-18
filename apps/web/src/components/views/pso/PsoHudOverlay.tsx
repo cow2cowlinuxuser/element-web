@@ -39,6 +39,8 @@ import {
 } from "./PsoSymbolChatMaker";
 import {
     PsoLobby3dLayer,
+    type PsoBgmTrackId,
+    type PsoCityEventLayoutId,
     type PsoGuildRoomEntry,
     type PsoLobbyPresentationMode,
     type PsoLobbySpeechBubble,
@@ -46,6 +48,10 @@ import {
     type PsoPersistedHunterState,
     type PsoRemoteLobbyPlayer,
 } from "./PsoLobby3dLayer";
+import {
+    PsoFullGameMenu,
+    type PsoMainMenuTabId,
+} from "./PsoFullGameMenu";
 
 const STORAGE_KEYS = {
     GLASS_ALPHA: "pso_hud_glass_alpha",
@@ -424,6 +430,33 @@ export function PsoHudOverlay(): JSX.Element {
     });
     const [isSymbolEditorOpen, setIsSymbolEditorOpen] = useState<boolean>(false);
     const [isLobby3dOpen, setIsLobby3dOpen] = useState<boolean>(false);
+    const [isFullGameMenuOpen, setIsFullGameMenuOpen] = useState<boolean>(false);
+    const [activeGameMenuTab, setActiveGameMenuTab] = useState<PsoMainMenuTabId>("item_pack");
+    const [showFunctionKeyBar, setShowFunctionKeyBar] = useState<boolean>(() => {
+        try {
+            const raw = localStorage.getItem("pso_hud_show_fkey_bar");
+            return raw === null ? false : raw === "true";
+        } catch {
+            return false;
+        }
+    });
+    const [menuNpcLayout, setMenuNpcLayout] = useState<PsoCityEventLayoutId>("e");
+    const [menuBgmTrack, setMenuBgmTrack] = useState<PsoBgmTrackId>("CITY.ogg");
+    const [hunterVitals, setHunterVitals] = useState<{
+        hp: number;
+        maxHp: number;
+        tp: number;
+        maxTp: number;
+        meseta: number;
+        rareDrops: string[];
+    }>({
+        hp: 1340,
+        maxHp: 1340,
+        tp: 980,
+        maxTp: 980,
+        meseta: 428500,
+        rareDrops: ["RED SWORD +52", "SANGE & YASHA", "PSYCHO WAND"],
+    });
     const [lobbyPresentationMode, setLobbyPresentationMode] = useState<PsoLobbyPresentationMode>(() => {
         try {
             const raw = localStorage.getItem(STORAGE_KEYS.LOBBY_PRESENTATION_MODE);
@@ -791,13 +824,16 @@ export function PsoHudOverlay(): JSX.Element {
     }, []);
 
     // Live Swatch @beat clock update
-    const handlePersistHunterState = useCallback((state: PsoPersistedHunterState) => {
-        setSavedHunterState(state);
-        try {
-            localStorage.setItem(STORAGE_KEYS.SAVED_HUNTER_STATE, JSON.stringify(state));
-        } catch {
-            // ignore
-        }
+    const handlePersistHunterState = useCallback((state: Partial<PsoPersistedHunterState>) => {
+        setSavedHunterState((prev) => {
+            const next = { ...prev, ...state };
+            try {
+                localStorage.setItem(STORAGE_KEYS.SAVED_HUNTER_STATE, JSON.stringify(next));
+            } catch {
+                // ignore
+            }
+            return next;
+        });
     }, []);
 
     // When the 3D Lobby window closes (or while closed with Ghost Standby enabled), keep our Hunter persistent as a Ghost Avatar (`ghostMode: true`) so others still see us and our chat balloons!
@@ -1845,9 +1881,76 @@ export function PsoHudOverlay(): JSX.Element {
         });
     }, []);
 
-    // Keyboard shortcuts: Alt+1..Alt+0 for Equipped Hex Quickbar, Alt+O / Alt+C / Alt+G, F11
+    const playUiMenuSound = useCallback(
+        (kind: "cursor" | "confirm" | "cancel" | "heal" | "tech"): void => {
+            if (isDeafened) return;
+            if (kind === "cursor") playPsoSymbolChime("comm");
+            else if (kind === "confirm") playPsoSymbolChime("rappy");
+            else if (kind === "cancel") playPsoSymbolChime("alert");
+            else if (kind === "heal") playPsoSymbolChime("cheer");
+            else playPsoSymbolChime("rare");
+        },
+        [isDeafened],
+    );
+
+    const toggleFunctionKeyBar = useCallback((): void => {
+        setShowFunctionKeyBar((prev) => {
+            const next = !prev;
+            try {
+                localStorage.setItem("pso_hud_show_fkey_bar", String(next));
+            } catch {
+                // ignore
+            }
+            return next;
+        });
+    }, []);
+
+    // Keyboard shortcuts: F12 PSOBB Main Menu, F1-F10 Function Keys, Alt+1..Alt+0 for Equipped Hex Quickbar, Alt+O / Alt+C / Alt+G, F11
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent): void => {
+            if (e.key === "F12" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                playUiMenuSound("confirm");
+                setIsFullGameMenuOpen((prev) => !prev);
+                return;
+            }
+            if (e.key === "Escape" && isFullGameMenuOpen) {
+                e.preventDefault();
+                playUiMenuSound("cancel");
+                setIsFullGameMenuOpen(false);
+                return;
+            }
+            if (
+                (isFullGameMenuOpen || isLobby3dOpen || showFunctionKeyBar) &&
+                !e.ctrlKey &&
+                !e.altKey &&
+                !e.metaKey &&
+                /^F([1-9]|10)$/.test(e.key)
+            ) {
+                e.preventDefault();
+                playUiMenuSound("confirm");
+                if (e.key === "F1") {
+                    toggleFunctionKeyBar();
+                } else {
+                    const fKeyTabMap: Record<string, PsoMainMenuTabId> = {
+                        F2: "item_pack",
+                        F3: "technique",
+                        F4: "mag",
+                        F5: "guild_card",
+                        F6: "guild_card",
+                        F7: "chat",
+                        F8: "team",
+                        F9: "team",
+                        F10: "status",
+                    };
+                    const targetTab = fKeyTabMap[e.key];
+                    if (targetTab) {
+                        setActiveGameMenuTab(targetTab);
+                        setIsFullGameMenuOpen(true);
+                    }
+                }
+                return;
+            }
             if (e.key === "F11") {
                 e.preventDefault();
                 sendElectronIpc("psoWindowToggleFullScreen");
@@ -1886,7 +1989,16 @@ export function PsoHudOverlay(): JSX.Element {
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [equippedHexDefs, executeHexAction, isStreamOverlay]);
+    }, [
+        equippedHexDefs,
+        executeHexAction,
+        isFullGameMenuOpen,
+        isLobby3dOpen,
+        isStreamOverlay,
+        playUiMenuSound,
+        showFunctionKeyBar,
+        toggleFunctionKeyBar,
+    ]);
 
     const onWallpaperUpload = (e: React.ChangeEvent<HTMLInputElement>): void => {
         const file = e.target.files?.[0];
@@ -2067,6 +2179,35 @@ export function PsoHudOverlay(): JSX.Element {
                             )}
                         </div>
                         <div className="pso-window-titlebar-actions">
+                            <button
+                                type="button"
+                                className={classNames("pso-window-ctrl-btn", {
+                                    "pso-window-ctrl-btn--active": isFullGameMenuOpen,
+                                })}
+                                onClick={() => {
+                                    playUiMenuSound("confirm");
+                                    setIsFullGameMenuOpen((prev) => !prev);
+                                }}
+                                title="Open Extracted PSOBB Full Game Menu (F12 — Item Pack, Technique, Mag, Status, Guild Card, Team, Option)"
+                                aria-label="Toggle PSOBB Full Game Menu"
+                                data-testid="pso-titlebar-game-menu-btn"
+                            >
+                                📋
+                            </button>
+                            <button
+                                type="button"
+                                className={classNames("pso-window-ctrl-btn", {
+                                    "pso-window-ctrl-btn--active": showFunctionKeyBar,
+                                })}
+                                onClick={() => {
+                                    playUiMenuSound("cursor");
+                                    toggleFunctionKeyBar();
+                                }}
+                                title="Toggle PSOBB F1–F12 Top Function Key Bar (F1)"
+                                aria-label="Toggle PSOBB Function Key Bar"
+                            >
+                                ⌨️
+                            </button>
                             <button
                                 type="button"
                                 className={classNames("pso-window-ctrl-btn", {
@@ -2541,6 +2682,193 @@ export function PsoHudOverlay(): JSX.Element {
                     onMouseLeave={onHudMouseLeave}
                 />
             )}
+
+            {/* 3D. EXTRACTED PSOBB FULL GAME MENU (`F12` Main Menu + `F1`–`F11` Function Key Bar) */}
+            <PsoFullGameMenu
+                isOpen={isFullGameMenuOpen}
+                activeTab={activeGameMenuTab}
+                showFunctionKeyBar={showFunctionKeyBar}
+                onToggleOpen={(nextOpen) =>
+                    setIsFullGameMenuOpen((prev) => (typeof nextOpen === "boolean" ? nextOpen : !prev))
+                }
+                onSelectTab={(tab) => setActiveGameMenuTab(tab)}
+                onToggleFunctionKeyBar={toggleFunctionKeyBar}
+                displayName={profile.displayName}
+                userId={profile.userId || "@hunter:pioneer2"}
+                classNameLabel={(savedHunterState.classId ?? "humar").toUpperCase()}
+                sectionIdName="SKYLY"
+                sectionIdColor="#3be8e8"
+                level={142}
+                hp={hunterVitals.hp}
+                maxHp={hunterVitals.maxHp}
+                tp={hunterVitals.tp}
+                maxTp={hunterVitals.maxTp}
+                meseta={hunterVitals.meseta}
+                rareDrops={hunterVitals.rareDrops}
+                pingMs={pingMs}
+                shipName={
+                    (() => {
+                        const roomId = sdkContext.roomViewStore.getRoomId();
+                        const room = roomId ? client?.getRoom(roomId) : null;
+                        return room?.name || "SHIP 02 // PIONEER 2";
+                    })()
+                }
+                isLobby3dOpen={isLobby3dOpen}
+                currentStageId={savedHunterState.stageId ?? "bb_city00"}
+                currentClassId={savedHunterState.classId ?? "humar"}
+                currentWeaponId={savedHunterState.weaponId ?? "kingdom_key"}
+                currentBgmTrack={menuBgmTrack}
+                currentNpcLayout={menuNpcLayout}
+                onOpenOrCloseLobby3d={(open) => setIsLobby3dOpen(open)}
+                onSelectStage={(stageId) => {
+                    handlePersistHunterState({
+                        x: savedHunterState.x ?? 0,
+                        z: savedHunterState.z ?? 4.5,
+                        yaw: savedHunterState.yaw ?? Math.PI,
+                        classId: savedHunterState.classId ?? "humar",
+                        weaponId: savedHunterState.weaponId ?? "kingdom_key",
+                        inChair: false,
+                        stageId,
+                    });
+                }}
+                onSelectClass={(classId) => {
+                    handlePersistHunterState({
+                        x: savedHunterState.x ?? 0,
+                        z: savedHunterState.z ?? 4.5,
+                        yaw: savedHunterState.yaw ?? Math.PI,
+                        classId,
+                        weaponId: savedHunterState.weaponId ?? "kingdom_key",
+                        inChair: savedHunterState.inChair ?? false,
+                        stageId: savedHunterState.stageId ?? "bb_city00",
+                    });
+                }}
+                onSelectWeapon={(weaponId) => {
+                    handlePersistHunterState({
+                        x: savedHunterState.x ?? 0,
+                        z: savedHunterState.z ?? 4.5,
+                        yaw: savedHunterState.yaw ?? Math.PI,
+                        classId: savedHunterState.classId ?? "humar",
+                        weaponId,
+                        inChair: savedHunterState.inChair ?? false,
+                        stageId: savedHunterState.stageId ?? "bb_city00",
+                    });
+                }}
+                onSelectBgmTrack={(track) => setMenuBgmTrack(track)}
+                onSelectNpcLayout={(layout) => setMenuNpcLayout(layout)}
+                onCastTechnique={(techName, tpCost) => {
+                    setHunterVitals((prev) => ({
+                        ...prev,
+                        tp: Math.max(0, prev.tp - tpCost),
+                        hp:
+                            techName.toLowerCase().includes("resta")
+                                ? prev.maxHp
+                                : prev.hp,
+                    }));
+                    setIncomingWorldAction({
+                        kind: "tech_burst",
+                        senderName: profile.displayName,
+                        x: savedHunterState.x ?? 0,
+                        z: savedHunterState.z ?? 4.5,
+                        ts: Date.now(),
+                    });
+                    showSymbolNotice({
+                        sender: profile.displayName,
+                        subtitle: `TECHNIQUE // ${techName.toUpperCase()}`,
+                        variant: techName.toLowerCase().includes("resta")
+                            ? "resta"
+                            : techName.toLowerCase().includes("deband")
+                              ? "deband"
+                              : "shifta",
+                        body: `Cast ${techName} (-${tpCost} TP)!`,
+                    });
+                }}
+                onUseConsumerItem={(itemName) => {
+                    setHunterVitals((prev) => ({
+                        ...prev,
+                        hp: itemName.toLowerCase().includes("fluid")
+                            ? prev.hp
+                            : prev.maxHp,
+                        tp: itemName.toLowerCase().includes("fluid") || itemName.toLowerCase().includes("star")
+                            ? prev.maxTp
+                            : prev.tp,
+                    }));
+                    showSymbolNotice({
+                        sender: profile.displayName,
+                        subtitle: `ITEM PACK // ${itemName.toUpperCase()}`,
+                        variant: "resta",
+                        body: `Used ${itemName} — Vitals restored!`,
+                    });
+                }}
+                guildRooms={(() => {
+                    if (!client) return [];
+                    const currentRoomId = sdkContext.roomViewStore.getRoomId();
+                    const rooms = client
+                        .getRooms()
+                        .filter((r) => r.getMyMembership() === "join" && !r.isSpaceRoom());
+                    return rooms.slice(0, 24).map(
+                        (r): PsoGuildRoomEntry => ({
+                            roomId: r.roomId,
+                            name: r.name || r.roomId,
+                            unreadCount: r.getUnreadNotificationCount() || 0,
+                            memberCount: r.getJoinedMemberCount() || 1,
+                            isCurrent: r.roomId === currentRoomId,
+                        }),
+                    );
+                })()}
+                partyMembers={(() => {
+                    if (liveParticipants.length > 0) {
+                        return liveParticipants.map((p, idx) => ({
+                            userId: p.userId || p.id,
+                            displayName: p.displayName || p.userId || `Hunter #${idx + 1}`,
+                            speaking: Boolean(p.speaking && p.audioEnabled),
+                            muted: !p.audioEnabled,
+                            local: Boolean(p.local),
+                            level: 120 + ((idx * 17) % 80),
+                            hpPct: 100,
+                            tpPct: 92,
+                        }));
+                    }
+                    return [
+                        {
+                            userId: profile.userId || "@self:pioneer2",
+                            displayName: profile.displayName,
+                            speaking: !isAudioMuted && micLevelPct > 18,
+                            muted: isAudioMuted,
+                            local: true,
+                            level: 142,
+                            hpPct: Math.round((hunterVitals.hp / Math.max(1, hunterVitals.maxHp)) * 100),
+                            tpPct: Math.round((hunterVitals.tp / Math.max(1, hunterVitals.maxTp)) * 100),
+                        },
+                    ];
+                })()}
+                isVoiceActive={Boolean(activeCall)}
+                isMicMuted={isAudioMuted}
+                isDeafened={isDeafened}
+                isCompactChat={isCompactChat}
+                isClickThroughGlass={isClickThroughGlass}
+                isStreamOverlay={isStreamOverlay}
+                onSelectGuildRoom={(targetRoomId) => {
+                    defaultDispatcher.dispatch<ViewRoomPayload>({
+                        action: Action.ViewRoom,
+                        room_id: targetRoomId,
+                        metricsTrigger: "RoomList",
+                    });
+                }}
+                onSendSimpleMail={(targetName, messageText) => {
+                    void sendRoomTextIfEnabled(`✉️ [SIMPLE MAIL -> ${targetName}]: ${messageText}`, true);
+                }}
+                onOpenSymbolChatMaker={() => setIsSymbolEditorOpen(true)}
+                onOpenHudTuner={() => setIsTunerOpen(true)}
+                onToggleVoiceCall={onJoinOrLeaveVoice}
+                onToggleMicMute={onToggleMute}
+                onToggleDeafen={onToggleDeafen}
+                onToggleCompactChat={() => executeHexAction("compact_chat")}
+                onToggleClickThroughGlass={() => executeHexAction("click_through")}
+                onToggleStreamOverlay={() => executeHexAction("stream_overlay")}
+                onPlayUiSound={playUiMenuSound}
+                onMouseEnter={onHudMouseEnter}
+                onMouseLeave={onHudMouseLeave}
+            />
 
             {/* 3C. EMBEDDED 3D WEBGL PSO PIONEER 2 LOBBY + MINIGAME + RESHADE + .NJ ASSET LOADER */}
             {isLobby3dOpen && (

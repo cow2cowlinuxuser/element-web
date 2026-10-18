@@ -450,6 +450,30 @@ const CITY_STAGE_OBJECT_MAP = {
     "fe_obj_o_medical_door01l.xj": "obj_med_door.xj",
 };
 
+const DIRECT_UI_XVM_TARGETS = [
+    { out: "texture_e.xvm", candidates: ["texture_e.xvm", "textureenglish.xvm"] },
+    { out: "ccconsole_e.xvm", candidates: ["ccconsole_e.xvm", "ccconsole_j.xvm"] },
+    { out: "infoicon.xvm", candidates: ["infoicon.xvm"] },
+    { out: "radermapframe.xvm", candidates: ["radermapframe.xvm"] },
+    { out: "ed128_font.xvm", candidates: ["ed128_font.xvm"] },
+];
+
+const PRS_UI_XVM_TARGETS = [
+    { out: "f256_hyouji.xvm", prs: "f256_hyouji.prs" },
+    { out: "f256_hyoujismall.xvm", prs: "f256_hyoujismall.prs" },
+    { out: "f256_player_prate.xvm", prs: "f256_player_prate.prs" },
+    { out: "f256_player_tex_eng.xvm", prs: "f256_player_tex_eng.prs" },
+    { out: "f256_selectgamen_a_eng.xvm", prs: "f256_selectgamen_a_eng.prs" },
+    { out: "f512_midashi_eng.xvm", prs: "f512_midashi_eng.prs" },
+    { out: "f256_uniticon.xvm", prs: "f256_uniticon.prs" },
+    { out: "f064_mucarsol.xvm", prs: "f064_mucarsol.prs" },
+    { out: "f064_multiconfirm.xvm", prs: "f064_multiconfirm.prs" },
+    { out: "f128_controller.xvm", prs: "f128_controller.prs" },
+    { out: "f256_backtext.xvm", prs: "f256_backtext.prs" },
+    { out: "f512_multiplay.xvm", prs: "f512_multiplay.prs" },
+    { out: "nowloading.xvm", prs: "nowloading.prs" },
+];
+
 // ---------------------------------------------------------------------------
 // 6. Main Extraction Pipeline
 // ---------------------------------------------------------------------------
@@ -480,9 +504,11 @@ function main() {
     const charsOut = path.join(outDir, "chars");
     const sceneOut = path.join(outDir, "scene");
     const oggOut = path.join(outDir, "ogg");
+    const uiOut = path.join(outDir, "ui");
     fs.mkdirSync(charsOut, { recursive: true });
     fs.mkdirSync(sceneOut, { recursive: true });
     fs.mkdirSync(oggOut, { recursive: true });
+    fs.mkdirSync(uiOut, { recursive: true });
 
     const gslPath = findFileCaseInsensitive(dataDir, "data.gsl");
     console.log(`[PSOBB Extractor] Reading archive: ${gslPath}`);
@@ -634,11 +660,50 @@ function main() {
         }
     }
 
-    // K. Compile `game-pack.json` directly from the extracted `.rel` section headers and `.dat` placement tables
-    const compiledGamePack = compileGamePackManifest(sceneOut);
+    // K. Direct & PRS-Compressed PSOBB UI Texture Atlases (`ui/*.xvm`)
+    for (const target of DIRECT_UI_XVM_TARGETS) {
+        let buf = null;
+        for (const cand of target.candidates) {
+            const loose = findFileCaseInsensitive(dataDir, cand);
+            if (loose) {
+                buf = fs.readFileSync(loose);
+                break;
+            }
+            const fromGsl = getGslFile(gslBuf, gslMap, cand);
+            if (fromGsl) {
+                buf = fromGsl;
+                break;
+            }
+        }
+        if (buf && buf.slice(0, 4).toString("ascii") === "XVMH") {
+            writeAsset("ui", target.out, buf);
+        }
+    }
+    for (const target of PRS_UI_XVM_TARGETS) {
+        const loose = findFileCaseInsensitive(dataDir, target.prs);
+        const rawPrs = loose ? fs.readFileSync(loose) : getGslFile(gslBuf, gslMap, target.prs);
+        if (rawPrs) {
+            const dec = prsDecompress(rawPrs);
+            if (dec && dec.slice(0, 4).toString("ascii") === "XVMH") {
+                writeAsset("ui", target.out, dec);
+            }
+        }
+    }
+
+    // L. Parse `unitxt_e.prs` (or `unitxt_j.prs`) and compile `game-pack.json` directly from `.rel`, `.dat`, and `unitxt`
+    const unitxtRaw =
+        (() => {
+            const p = findFileCaseInsensitive(dataDir, "unitxt_e.prs") || findFileCaseInsensitive(dataDir, "unitxt_j.prs");
+            return p ? fs.readFileSync(p) : null;
+        })() ||
+        getGslFile(gslBuf, gslMap, "unitxt_e.prs") ||
+        getGslFile(gslBuf, gslMap, "unitxt_j.prs");
+    const unitxtCategories = unitxtRaw ? parseUnitxtPrsCategories(prsDecompress(unitxtRaw)) : [];
+
+    const compiledGamePack = compileGamePackManifest(sceneOut, unitxtCategories);
     fs.writeFileSync(path.join(outDir, "game-pack.json"), JSON.stringify(compiledGamePack, null, 2));
     console.log(
-        `[PSOBB Extractor] Compiled clean-room game-pack.json (${Object.keys(compiledGamePack.stages).length} stages, ${Object.values(compiledGamePack.cityNpcLayouts).reduce((a, b) => a + b.length, 0)} NPC placements, ${compiledGamePack.cityStageObjects.length} stage objects)`,
+        `[PSOBB Extractor] Compiled clean-room game-pack.json (${Object.keys(compiledGamePack.stages).length} stages, ${Object.values(compiledGamePack.cityNpcLayouts).reduce((a, b) => a + b.length, 0)} NPC placements, ${compiledGamePack.cityStageObjects.length} stage objects, ${unitxtCategories.length} unitxt categories)`,
     );
 
     console.log(
@@ -783,7 +848,269 @@ function mapNpcBinaryEntryToSpec(idx, typeHex, secId, f60, wanderRadius, wx, wy,
     return spec;
 }
 
-function compileGamePackManifest(sceneOutDir) {
+function parseUnitxtPrsCategories(unitxtBuf) {
+    if (!unitxtBuf || unitxtBuf.length < 16) return [];
+    const catCount = unitxtBuf.readUInt32LE(0);
+    if (catCount === 0 || catCount > 256) return [];
+    const counts = [];
+    for (let i = 0; i < catCount; i++) {
+        counts.push(unitxtBuf.readUInt32LE(4 + i * 4));
+    }
+    let ptrOff = 4 + catCount * 4;
+    const categories = [];
+    for (let c = 0; c < catCount; c++) {
+        const strs = [];
+        for (let s = 0; s < counts[c]; s++) {
+            if (ptrOff + 4 > unitxtBuf.length) break;
+            const strOff = unitxtBuf.readUInt32LE(ptrOff);
+            ptrOff += 4;
+            let end = strOff;
+            while (end + 1 < unitxtBuf.length && unitxtBuf.readUInt16LE(end) !== 0) {
+                end += 2;
+            }
+            const rawStr =
+                strOff < unitxtBuf.length && end >= strOff
+                    ? unitxtBuf.slice(strOff, end).toString("utf16le").replace(/\r?\n/g, " ").trim()
+                    : "";
+            strs.push(rawStr);
+        }
+        categories.push(strs);
+    }
+    return categories;
+}
+
+function buildCompiledUiMenuSpec(unitxtCategories) {
+    const getCat = (c) => (Array.isArray(unitxtCategories[c]) ? unitxtCategories[c] : []);
+    const getStr = (c, idx, fallback) => {
+        const arr = getCat(c);
+        return arr[idx] && arr[idx].length > 0 ? arr[idx] : fallback;
+    };
+
+    const c1 = getCat(1);
+    const c3 = getCat(3);
+    const c5 = getCat(5);
+    const c6 = getCat(6);
+    const c8 = getCat(8);
+    const c10 = getCat(10);
+    const c72 = getCat(72);
+
+    // Function Key Bar F1-F12 (`Cat[11][353..364]`)
+    const functionKeyLabels = [
+        { key: "F1", rawLabel: getStr(11, 353, "F1: Function Key ON/OFF Display"), actionId: "toggle_fkeys" },
+        { key: "F2", rawLabel: getStr(11, 354, "F2 : Equip"), actionId: "item_pack" },
+        { key: "F3", rawLabel: getStr(11, 355, "F3 : Technique"), actionId: "technique" },
+        { key: "F4", rawLabel: getStr(11, 356, "F4 : Mag"), actionId: "mag" },
+        { key: "F5", rawLabel: getStr(11, 357, "F5 : Check the Guild Card"), actionId: "guild_card" },
+        { key: "F6", rawLabel: getStr(11, 358, "F6 : Simple Mail"), actionId: "simple_mail" },
+        { key: "F7", rawLabel: getStr(11, 359, "F7 : Symbol Chat"), actionId: "symbol_chat" },
+        { key: "F8", rawLabel: getStr(11, 360, "F8 : Team Member List"), actionId: "team_list" },
+        { key: "F9", rawLabel: getStr(11, 361, "F9 : Team Log"), actionId: "team_log" },
+        { key: "F10", rawLabel: getStr(11, 362, "F10 : Status & Area Map"), actionId: "status_map" },
+        { key: "F11", rawLabel: getStr(11, 363, "F11 : Quick Chat"), actionId: "chat_menu" },
+        { key: "F12", rawLabel: getStr(11, 364, "F12 : Main Menu"), actionId: "main_menu" },
+    ];
+
+    // Cascading Main Menu Top-Level Categories (`Cat[11]` + `Cat[15]` + `Cat[16]`)
+    const mainMenuTabs = [
+        {
+            id: "item_pack",
+            label: "Item Pack",
+            shortcut: "F2",
+            helpText: getStr(11, 0, "View, equip, and use items in your Item Pack."),
+            subItems: [
+                { id: "equip_weapons", label: getStr(11, 354, "Equip / Weapons").replace(/^F2\s*:\s*/i, ""), helpText: getStr(11, 2, "Equip weapons, frames, barriers, and units.") },
+                { id: "use_tools", label: "Use / Recovery Items", helpText: getStr(11, 1, "Use recovery items and support tools.") },
+                { id: "rare_drops", label: "Rare Drop Tekker Box", helpText: getStr(11, 3, "Inspect special weapons & rare red-box drops.") },
+            ],
+        },
+        {
+            id: "technique",
+            label: getStr(11, 355, "Technique").replace(/^F3\s*:\s*/i, ""),
+            shortcut: "F3",
+            helpText: getStr(11, 4, "View and cast learned Techniques."),
+            subItems: [
+                { id: "tech_attack", label: "Attack Techniques (Foie / Barta / Zonde)", helpText: getStr(11, 5, "Cast offensive elemental techniques in the 3D lobby.") },
+                { id: "tech_support", label: "Support & Recovery (Resta / Shifta / Deband)", helpText: getStr(11, 6, "Cast party healing, buffs, and telepipes.") },
+            ],
+        },
+        {
+            id: "mag",
+            label: getStr(11, 356, "Mag").replace(/^F4\s*:\s*/i, ""),
+            shortcut: "F4",
+            helpText: getStr(11, 7, "Check MAG status, Synchro, IQ, and feed items."),
+            subItems: [
+                { id: "mag_feed", label: getStr(11, 56, "Give Items"), helpText: getStr(11, 8, "Feed Monomate, Dimate, Trimate, or Fluids to raise MAG stats.") },
+                { id: "mag_pb", label: getStr(11, 61, "Photon Blast"), helpText: "View equipped Photon Blasts and trigger a burst." },
+            ],
+        },
+        {
+            id: "status",
+            label: "Status",
+            shortcut: "F10",
+            helpText: "Inspect Hunter parameters, Section ID, resists, and Matrix Comms telemetry.",
+            subItems: [
+                { id: "status_hunter", label: "Hunter Parameters & Resists", helpText: "View ATP, DFP, MST, ATA, EVP, LCK, and elemental resistances." },
+                { id: "status_comms", label: "Pioneer 2 Matrix Telemetry", helpText: "Inspect Matrix Homeserver ping, LiveKit voice link, and 3D lobby room." },
+            ],
+        },
+        {
+            id: "quest",
+            label: getStr(15, 52, "Quest"),
+            shortcut: "MAP",
+            helpText: getStr(11, 9, "Warp between Ragol areas, Pioneer 2 counters, and Seasonal NPC events."),
+            subItems: [
+                { id: "warp_areas", label: "Ragol & Pioneer 2 Area Warp", helpText: "Teleport directly between Pioneer 2 City, Visual Lobby, Lab, Forest, Caves, Mines & Ruins." },
+                { id: "npc_layouts", label: "Pioneer 2 Seasonal NPC Layouts", helpText: "Switch between Standard, Spring, Offline Guild, and Valentine NPC placements." },
+            ],
+        },
+        {
+            id: "guild_card",
+            label: "Guild Card",
+            shortcut: "F5",
+            helpText: getStr(11, 10, "Manage Hunter Guild Cards, Matrix Room Contacts, and Simple Mail."),
+            subItems: [
+                { id: "card_list", label: getStr(11, 93, "Search") + " / " + getStr(11, 92, "Card List"), helpText: getStr(11, 14, "Browse fellow Hunters in your Matrix rooms, Meet the User, or Send Mail.") },
+                { id: "my_card", label: getStr(11, 91, "MY Card"), helpText: getStr(11, 15, "View and edit your personal Hunter Guild Card & comment.") },
+                { id: "simple_mail", label: getStr(11, 358, "Simple Mail").replace(/^F6\s*:\s*/i, ""), helpText: getStr(11, 16, "Send a direct Matrix Simple Mail or jump to chat composer.") },
+            ],
+        },
+        {
+            id: "chat",
+            label: "Chat",
+            shortcut: "F7",
+            helpText: getStr(11, 11, "Symbol Chat, Word Select, Action Palette, and Function Key Bar."),
+            subItems: [
+                { id: "symbol_chat", label: getStr(11, 359, "Symbol Chat").replace(/^F7\s*:\s*/i, ""), helpText: getStr(11, 21, "Broadcast or edit multi-layer PSOBB Symbol Chats with sound effects.") },
+                { id: "action_palette", label: "Customize Action Palette (1-0)", helpText: "Configure the bottom Episode IV Hexagonal Action Palette." },
+                { id: "fkey_bar", label: getStr(11, 353, "F1: Function Key ON/OFF Display"), helpText: "Toggle the top PSOBB F1-F12 Function Key bar." },
+            ],
+        },
+        {
+            id: "team",
+            label: getStr(15, 86, "Team"),
+            shortcut: "F8",
+            helpText: getStr(11, 46, "Matrix Room Party, LiveKit Voice Comms, Screen Share, and Team Log."),
+            subItems: [
+                { id: "team_list", label: getStr(11, 360, "Team Member List").replace(/^F8\s*:\s*/i, ""), helpText: getStr(11, 43, "Inspect current Matrix room & Voice Call party roster, Mute/Deafen, and Screen Share.") },
+                { id: "team_log", label: getStr(11, 361, "Team Log").replace(/^F9\s*:\s*/i, ""), helpText: getStr(11, 44, "Toggle the Compact PSO Chat Log & Top-Left Party Voice HUD.") },
+            ],
+        },
+        {
+            id: "option",
+            label: getStr(11, 121, "Option"),
+            shortcut: "OPT",
+            helpText: getStr(11, 12, "Configure Sound, BGM Disk, 3D ReShade Shaders, and HUD Glass Tuner."),
+            subItems: [
+                { id: "opt_sound", label: getStr(16, 1, "Sound") + " & BGM Disk", helpText: getStr(11, 28, "Adjust PSOBB BGM track, volume, and synthesized UI sound effects.") },
+                { id: "opt_graphics", label: "3D ReShade & Camera Rig", helpText: "Configure SMAA, Bloom, Vibrance, LumaSharpen, and 3D Lobby Camera FOV." },
+                { id: "opt_hud", label: getStr(16, 2, "Network Option") + " & HUD Glass", helpText: "Adjust HUD Glass Opacity, Scanlines, Click-Through Mode, and Stream Overlay." },
+            ],
+        },
+        {
+            id: "quit",
+            label: "Quit Game",
+            shortcut: "ESC",
+            helpText: getStr(11, 13, "Close the 3D Visual Lobby or return to the standard Matrix Comm-Link."),
+            subItems: [
+                { id: "quit_menu", label: "Close Main Menu [F12]", helpText: "Return to active Pioneer 2 view." },
+                { id: "quit_lobby", label: "Exit 3D Visual Lobby", helpText: "Close the 3D Visual Lobby and return to 2D Matrix chat." },
+            ],
+        },
+    ];
+
+    const techniques = [];
+    for (let i = 0; i < Math.min(c5.length, 19); i++) {
+        if (c5[i]) {
+            techniques.push({
+                id: `tech_${i}`,
+                name: c5[i],
+                description: c6[i] || `Cast ${c5[i]} technique.`,
+                tpCost: 5 + (i % 5) * 4,
+            });
+        }
+    }
+
+    const coreItems = [];
+    const itemIndices = [
+        1, 2, 3, 4, 5, 6, 7, 13, 21, 29, 43, 53, 63, 73, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198,
+    ];
+    for (const idx of itemIndices) {
+        if (c1[idx]) {
+            coreItems.push({
+                id: `item_${idx}`,
+                name: c1[idx],
+                description: c3[idx] || "Pioneer 2 Hunter supply item.",
+            });
+        }
+    }
+
+    return {
+        functionKeyLabels,
+        mainMenuTabs,
+        statLabels: {
+            atp: getStr(11, 48, "ATP"),
+            dfp: getStr(11, 49, "DFP"),
+            mst: getStr(11, 50, "MST"),
+            ata: getStr(11, 51, "ATA"),
+            evp: getStr(11, 52, "EVP"),
+            lck: getStr(11, 53, "LCK"),
+            level: getStr(11, 54, "LEVEL"),
+            exp: getStr(11, 55, "EXP"),
+            synchro: getStr(11, 58, "Synchro"),
+            iq: getStr(11, 59, "IQ"),
+            efr: getStr(11, 63, "EFR"),
+            eic: getStr(11, 64, "EIC"),
+            eth: getStr(11, 65, "ETH"),
+            edk: getStr(11, 66, "EDK"),
+            elt: getStr(11, 67, "ELT"),
+            nextLevel: getStr(11, 68, "NEXT LEVEL"),
+            meseta: getStr(11, 69, "Meseta"),
+        },
+        guildCardLabels: {
+            cardString: getStr(11, 90, "Card"),
+            myCard: getStr(11, 91, "MY Card"),
+            cardList: getStr(11, 92, "Card List"),
+            search: getStr(11, 93, "Search"),
+            sendCard: getStr(11, 94, "Send Card"),
+            meetUser: getStr(11, 95, "Meet the User"),
+            deleteCard: getStr(11, 96, "Delete"),
+            editComment: getStr(11, 97, "Comment"),
+            sortOrder: getStr(11, 98, "Order"),
+            sendMail: getStr(11, 108, "Send Mail"),
+        },
+        classNames: c8.length >= 12 ? c8.slice(0, 12) : [
+            "HUmar", "HUnewearl", "HUcast", "RAmar", "RAcast", "RAcaseal",
+            "FOmarl", "FOnewm", "FOnewearl", "HUcaseal", "FOmar", "RAmarl",
+        ],
+        sectionIds: c72.length >= 10 ? c72.slice(0, 10) : [
+            "VIRIDIA", "GREENILL", "SKYLY", "BLUEFULL", "PURPLENUM",
+            "PINKAL", "REDRIA", "ORAN", "YELLOWBOZE", "WHITILL",
+        ],
+        areaNames: c10.length > 0 ? c10.filter(Boolean).slice(0, 26) : [
+            "PIONEER 2", "FOREST 1", "FOREST 2", "CAVE 1", "CAVE 2",
+            "MINE 1", "MINE 2", "RUINS 1", "RUINS 2", "RUINS 3", "LAB",
+        ],
+        techniques,
+        coreItems,
+        uiXvmSheets: {
+            hudGauges: "media/pso/ui/f256_hyouji.xvm",
+            hudGaugesSmall: "media/pso/ui/f256_hyoujismall.xvm",
+            playerPlate: "media/pso/ui/f256_player_prate.xvm",
+            playerTexEng: "media/pso/ui/f256_player_tex_eng.xvm",
+            selectFrameEng: "media/pso/ui/f256_selectgamen_a_eng.xvm",
+            headerBannersEng: "media/pso/ui/f512_midashi_eng.xvm",
+            unitIcons: "media/pso/ui/f256_uniticon.xvm",
+            cursorsAndSectionIds: "media/pso/ui/f064_mucarsol.xvm",
+            confirmPrompt: "media/pso/ui/f064_multiconfirm.xvm",
+            consoleChrome: "media/pso/ui/ccconsole_e.xvm",
+            mainUiTex: "media/pso/ui/texture_e.xvm",
+            infoIcons: "media/pso/ui/infoicon.xvm",
+            radarFrame: "media/pso/ui/radermapframe.xvm",
+        },
+    };
+}
+
+function compileGamePackManifest(sceneOutDir, unitxtCategories = []) {
     const cityRelPath = path.join(sceneOutDir, "map_city00_00n.rel");
     const citySecs = fs.existsSync(cityRelPath)
         ? parseRelSectionTable(fs.readFileSync(cityRelPath))
@@ -1108,6 +1435,7 @@ function compileGamePackManifest(sceneOutDir) {
             { x: -39.0, y: -5.4, z0: -42, z1: 42, speed: 8.4, phase: 5.1, dir: 1 },
             { x: -44.0, y: 0.5, z0: 42, z1: -42, speed: 12.6, phase: 7.7, dir: -1 },
         ],
+        uiMenuSpec: buildCompiledUiMenuSpec(unitxtCategories),
     };
 }
 

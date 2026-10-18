@@ -90,4 +90,27 @@ describe("PsoHudOverlay", () => {
         expect(screen.getByTestId("pso-tuner-popover")).toBeInTheDocument();
         expect(screen.getByText(/HUD & Wallpaper Tuner/i)).toBeInTheDocument();
     });
+
+    it("opens the extracted PSOBB F12 Full Game Menu and navigates between Item Pack, Technique, Mag, Status, and Guild Card", async () => {
+        const PsoHudOverlay = wrapInSdkContext(UnwrappedPsoHudOverlay, sdkContext);
+        render(<PsoHudOverlay />);
+
+        expect(screen.queryByTestId("pso-full-game-menu")).toBeNull();
+
+        await userEvent.click(screen.getByTestId("pso-titlebar-game-menu-btn"));
+        expect(screen.getByTestId("pso-full-game-menu")).toBeInTheDocument();
+        expect(screen.getAllByText(/MAIN MENU/i).length).toBeGreaterThan(0);
+
+        // Navigate to Technique tab (`F3`)
+        await userEvent.click(screen.getByTestId("pso-gamemenu-tab-technique"));
+        expect(screen.getByText(/LEARNED PSOBB TECHNIQUES/i)).toBeInTheDocument();
+
+        // Navigate to Status tab (`F10`)
+        await userEvent.click(screen.getByTestId("pso-gamemenu-tab-status"));
+        expect(screen.getByText(/MATRIX HOMESERVER PING/i)).toBeInTheDocument();
+
+        // Close Full Game Menu
+        await userEvent.click(screen.getByTestId("pso-full-game-menu-close"));
+        expect(screen.queryByTestId("pso-full-game-menu")).toBeNull();
+    });
 });
