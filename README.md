@@ -41,11 +41,12 @@ Users are required to provide their own legally acquired assets to use with this
 
 ---
 
-## Clean-Room Bring-Your-Own-Assets (BYOA) Setup
+## Clean-Room Bring-Your-Own-Assets (BYOA) & Game-Pack Compiler
 
-To keep this repository 100% free of copyrighted Sega binary assets, the extracted `.nj`, `.xj`, `.xvm`, `.rel`, `.dat`, `.njm`, and `.ogg` files under `apps/web/res/media/pso/{chars,scene,ogg}/` are git-ignored.
-
-Instead, this repository includes a zero-dependency, cross-platform Node.js extractor (`scripts/extract-psobb-assets.mjs`) that unpacks all **198** required assets directly from your own local **Phantasy Star Online: Blue Burst** installation (`data/data.gsl`, `data/scene/`, `data/ogg/`, `data/pl*tex.afs`) in under 1 second on **Linux, macOS, and Windows**.
+To keep this repository 100% free of copyrighted Sega binary assets **and** hardcoded game tables/coordinates:
+1. All extracted `.nj`, `.xj`, `.xvm`, `.rel`, `.dat`, `.njm`, and `.ogg` files under `apps/web/res/media/pso/{chars,scene,ogg}/` **and** the compiled `apps/web/res/media/pso/game-pack.json` manifest are git-ignored.
+2. The zero-dependency Node.js compiler (`scripts/extract-psobb-assets.mjs`) reads your local **Phantasy Star Online: Blue Burst** installation (`data/data.gsl`, `data/scene/`, `data/ogg/`, `data/pl*tex.afs`), extracts the **198** binary assets, and **compiles `game-pack.json` directly from the game's binary `.rel` section headers and `.dat` placement tables** (`map_city00_00n.rel` + `map_city00_00e*.dat` + `map_city00_00o.dat`).
+3. At runtime, `PsoGamePackLoader.ts` dynamically loads `media/pso/game-pack.json` into the generic 3D stage runtime (`PsoLobby3dLayer.tsx`). If `game-pack.json` has not been generated yet, the client falls back cleanly to a procedural Holodeck (`FALLBACK_PROCEDURAL_GAME_PACK`) with zero game data.
 
 ---
 

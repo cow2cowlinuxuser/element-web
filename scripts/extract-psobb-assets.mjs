@@ -634,9 +634,481 @@ function main() {
         }
     }
 
+    // K. Compile `game-pack.json` directly from the extracted `.rel` section headers and `.dat` placement tables
+    const compiledGamePack = compileGamePackManifest(sceneOut);
+    fs.writeFileSync(path.join(outDir, "game-pack.json"), JSON.stringify(compiledGamePack, null, 2));
     console.log(
-        `[PSOBB Extractor] Successfully extracted ${extractedCount} assets to:\n  ${outDir}`,
+        `[PSOBB Extractor] Compiled clean-room game-pack.json (${Object.keys(compiledGamePack.stages).length} stages, ${Object.values(compiledGamePack.cityNpcLayouts).reduce((a, b) => a + b.length, 0)} NPC placements, ${compiledGamePack.cityStageObjects.length} stage objects)`,
     );
+
+    console.log(
+        `[PSOBB Extractor] Successfully extracted ${extractedCount} binary assets + game-pack.json to:\n  ${outDir}`,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 7. Clean-Room Game Pack Compiler (`n.rel` Sections + `*e*.dat` + `*o.dat`)
+// ---------------------------------------------------------------------------
+
+function parseRelSectionTable(relBuf) {
+    const secs = new Map();
+    if (!relBuf || relBuf.length < 64) return secs;
+    const rootOff = relBuf.readUInt32LE(relBuf.length - 16);
+    if (rootOff === 0 || rootOff + 24 > relBuf.length) return secs;
+    const secCount = relBuf.readUInt32LE(rootOff + 8);
+    const secTblOff = relBuf.readUInt32LE(rootOff + 16);
+    for (let s = 0; s < Math.min(secCount, 96); s++) {
+        const so = secTblOff + s * 52;
+        if (so + 52 > relBuf.length) break;
+        const id = relBuf.readInt32LE(so);
+        const sx = relBuf.readFloatLE(so + 4);
+        const sy = relBuf.readFloatLE(so + 8);
+        const sz = relBuf.readFloatLE(so + 12);
+        const sry = relBuf.readInt32LE(so + 20);
+        secs.set(id, { sx, sy, sz, sry });
+    }
+    return secs;
+}
+
+function transformSectionLocalToWorld(secs, secId, lx, ly, lz, ry, scale = 0.08) {
+    const sec = secs.get(secId) || { sx: 0, sy: 0, sz: 0, sry: 0 };
+    const ang = (sec.sry * 2 * Math.PI) / 65536;
+    const cosY = Math.cos(ang);
+    const sinY = Math.sin(ang);
+    const wx = Number(((sec.sx + (lx * cosY + lz * sinY)) * scale).toFixed(2));
+    const wy = Number(((sec.sy + ly) * scale).toFixed(2));
+    const wz = Number(((sec.sz + (-lx * sinY + lz * cosY)) * scale).toFixed(2));
+    const wyaw = Number((((((sec.sry + ry) * 360) / 65536) % 360) + 360).toFixed(1)) % 360;
+    return { wx, wy, wz, wyaw };
+}
+
+function mapNpcBinaryEntryToSpec(idx, typeHex, secId, f60, wanderRadius, wx, wy, wz, wyaw, layoutKey) {
+    const isOfflineLike = layoutKey === "e_d" || layoutKey === "e_c1";
+    // Map PSOBB `e.dat` NPC type ID (`typeHex`) + script trigger (`f60`) to model & role
+    let npcModelId = "npc_cit_efw";
+    let c = "humar";
+    let name = `PIONEER CITIZEN #${idx}`;
+
+    if (f60 === 850) {
+        npcModelId = isOfflineLike ? "npc_shop_armor" : "npc_trunk";
+        c = isOfflineLike ? "humar" : "fomarl";
+        name = isOfflineLike ? "GUILD OFFICER [Offline Counter]" : "GUILD CLERK [Quest Counter]";
+    } else if (f60 === 840) {
+        npcModelId = "npc_trunk";
+        c = "fonewearl";
+        name = "BANK CLERK [Check Room]";
+    } else if (f60 === 830 || typeHex === 0x1c) {
+        npcModelId = "npc_tekker";
+        c = "fomar";
+        name = "THE TEKKER [Special Appraiser]";
+    } else if (f60 === 800 || typeHex === 0x0c) {
+        npcModelId = "npc_shop_weap";
+        c = "humar";
+        name = "WEAPON SHOP [Arms Dealer]";
+    } else if (f60 === 820) {
+        npcModelId = "npc_shop_tool";
+        c = "hunewearl";
+        name = "TOOL SHOP [Items & Tech Disks]";
+    } else if (f60 === 810) {
+        npcModelId = "npc_shop_armor";
+        c = "ramar";
+        name = "ARMOR SHOP [Frames & Barriers]";
+    } else if (f60 === 860) {
+        npcModelId = "npc_nurse";
+        c = "fomarl";
+        name = "MEDICAL NURSE [Heal Counter]";
+    } else if (typeHex === 0x1f) {
+        npcModelId = "npc_nurse";
+        c = "fomarl";
+        name = "CLINIC NURSE [Medical Lobby]";
+    } else if (typeHex === 0x1b || f60 === 1) {
+        npcModelId = "npc_tyrell";
+        c = "fomar";
+        name = "👑 PRINCIPAL COLIN TYRELL";
+    } else if (typeHex === 0x20 || f60 === 20) {
+        npcModelId = "npc_irene";
+        c = "fomarl";
+        name = "SECRETARY IRENE";
+    } else if (typeHex === 0x100 || f60 === 870) {
+        npcModelId = "npc_momoka";
+        c = "fonewearl";
+        name = "MOMOKA [Government Quest]";
+    } else if (secId === 41 && typeHex === 0x1e) {
+        npcModelId = "npc_hakase";
+        c = "fonewm";
+        name = f60 === 30 ? "LAB RESEARCHER [Alpha]" : "LAB RESEARCHER [Beta]";
+    } else if (typeHex === 0x1a || (typeHex === 0x09 && idx === 3)) {
+        npcModelId = "npc_gunb2";
+        c = "ramar";
+        name = f60 === 230 ? "CHALLENGE OFFICER [Patrol]" : "MILITARY GUARD [Ragol Gate S]";
+    } else if (typeHex === 0x19 || (typeHex === 0x09 && idx === 4)) {
+        npcModelId = "npc_gunm";
+        c = "ramar";
+        name = "MILITARY GUARD [Ragol Gate N]";
+    } else if (secId === 30) {
+        npcModelId = "npc_cit_etw";
+        c = "ramarl";
+        name = "PLAZA SHOPPER [Sec 30]";
+    } else if (typeHex === 0x0a || typeHex === 0x02) {
+        npcModelId = "npc_cit_etw";
+        c = "ramarl";
+        name = "PIONEER CITIZEN [Concourse S]";
+    } else if (typeHex === 0x05 || typeHex === 0x0d) {
+        npcModelId = isOfflineLike ? "npc_cit_efw" : "npc_cit_eom";
+        c = "fomar";
+        name = wz < -5 ? "PIONEER CITIZEN [South Promenade]" : "PIONEER CITIZEN [Central Bridge]";
+    } else if (typeHex === 0x1e) {
+        npcModelId = isOfflineLike ? "npc_cit_efw" : "npc_cit_efsm";
+        c = "humar";
+        name = "PIONEER CITIZEN [West Promenade]";
+    } else {
+        npcModelId = isOfflineLike ? "npc_cit_eom" : "npc_cit_efw";
+        c = "fomarl";
+        name = "PIONEER CITIZEN [Concourse N]";
+    }
+
+    const spec = {
+        id: `npc-${layoutKey}-${idx}`,
+        name,
+        x: wx,
+        y: Math.max(0, wy),
+        z: wz,
+        yawDeg: wyaw,
+        c,
+        npcModelId,
+    };
+    if (wanderRadius > 0) {
+        spec.wanderRadius = Math.round(wanderRadius);
+    }
+    return spec;
+}
+
+function compileGamePackManifest(sceneOutDir) {
+    const cityRelPath = path.join(sceneOutDir, "map_city00_00n.rel");
+    const citySecs = fs.existsSync(cityRelPath)
+        ? parseRelSectionTable(fs.readFileSync(cityRelPath))
+        : new Map();
+
+    // 1. Parse all 4 Pioneer 2 Event NPC layouts (`map_city00_00e*.dat`)
+    const cityNpcLayouts = { e: [], e_s: [], e_d: [], e_c1: [] };
+    const layoutFiles = {
+        e: "map_city00_00e.dat",
+        e_s: "map_city00_00e_s.dat",
+        e_d: "map_city00_00e_d.dat",
+        e_c1: "map_city00_00e_c1.dat",
+    };
+
+    for (const [layoutKey, fileName] of Object.entries(layoutFiles)) {
+        const datPath = path.join(sceneOutDir, fileName);
+        if (!fs.existsSync(datPath)) continue;
+        const buf = fs.readFileSync(datPath);
+        const count = Math.floor(buf.length / 72);
+        for (let i = 0; i < count; i++) {
+            const off = i * 72;
+            const typeHex = buf.readUInt16LE(off);
+            const secId = buf.readUInt16LE(off + 12);
+            const lx = buf.readFloatLE(off + 20);
+            const ly = buf.readFloatLE(off + 24);
+            const lz = buf.readFloatLE(off + 28);
+            const ry = buf.readInt32LE(off + 36);
+            const wanderRadius = buf.readFloatLE(off + 44);
+            const f60 = buf.readFloatLE(off + 60);
+            const { wx, wy, wz, wyaw } = transformSectionLocalToWorld(citySecs, secId, lx, ly, lz, ry);
+            cityNpcLayouts[layoutKey].push(
+                mapNpcBinaryEntryToSpec(i, typeHex, secId, f60, wanderRadius, wx, wy, wz, wyaw, layoutKey),
+            );
+        }
+    }
+
+    // 2. Parse `map_city00_00o.dat` 68-byte object entries for stage objects, doors, teleporters, and counter triggers
+    const cityStageObjects = [];
+    const cityStations = [];
+    const oDatPath = path.join(sceneOutDir, "map_city00_00o.dat");
+    if (fs.existsSync(oDatPath)) {
+        const obuf = fs.readFileSync(oDatPath);
+        const ocount = Math.floor(obuf.length / 68);
+        let shopTriggerAccum = { x: 0, z: 0, count: 0 };
+
+        for (let i = 0; i < ocount; i++) {
+            const off = i * 68;
+            const objType = obuf.readUInt16LE(off);
+            const secId = obuf.readUInt16LE(off + 12);
+            const lx = obuf.readFloatLE(off + 16);
+            const ly = obuf.readFloatLE(off + 20);
+            const lz = obuf.readFloatLE(off + 24);
+            const ry = obuf.readInt32LE(off + 32);
+            const i52 = obuf.readInt32LE(off + 52);
+            const { wx, wy, wz, wyaw } = transformSectionLocalToWorld(citySecs, secId, lx, ly, lz, ry);
+
+            // Stage 3D Meshes (`warp_big`, `warp_small`, `elv_alcove`, `shopdoor`, `hunter_door`, `med_door`)
+            if (objType === 67) {
+                cityStageObjects.push({ kind: "warp_big", x: wx, y: 0.08, z: wz, yawDeg: wyaw });
+                cityStations.push({
+                    id: "teleporter_pad",
+                    title: "🟢 RAGOL AREA TELEPORTER (FOREST / CAVES / MINES / RUINS) [F]",
+                    x: wx,
+                    y: 2.15,
+                    z: wz,
+                    radius: 4.2,
+                    color: "#50f296",
+                });
+            } else if (objType === 69) {
+                cityStageObjects.push({ kind: "warp_small", x: wx, y: 0.0, z: wz, yawDeg: wyaw });
+                if (wz > -50) {
+                    cityStageObjects.push({ kind: "elv_alcove", x: wx, y: 0.0, z: wz, yawDeg: 0 });
+                    cityStations.push({
+                        id: "principal_warp_to_office",
+                        title: "🏛️ PRINCIPAL'S OFFICE TELEPORTER PAD [F]",
+                        x: wx,
+                        y: 1.95,
+                        z: wz,
+                        radius: 3.2,
+                        color: "#c88aff",
+                    });
+                } else {
+                    cityStations.push({
+                        id: "principal_warp_to_city",
+                        title: "🏙️ RETURN TO PIONEER 2 CITY CONCOURSE [F]",
+                        x: wx,
+                        y: 1.95,
+                        z: wz,
+                        radius: 3.6,
+                        color: "#50f296",
+                    });
+                }
+            } else if (objType === 70) {
+                cityStageObjects.push({ kind: "shopdoor", x: wx, y: 0.0, z: wz, yawDeg: wyaw });
+            } else if (objType === 71 || objType === 72) {
+                cityStageObjects.push({
+                    kind: "hunter_door",
+                    x: wx,
+                    y: 0.0,
+                    z: wz,
+                    yawDeg: objType === 72 ? 90 : wyaw,
+                });
+            } else if (objType === 73) {
+                cityStageObjects.push({ kind: "med_door", x: wx, y: 0.0, z: wz, yawDeg: wyaw });
+            } else if (objType === 64) {
+                // Interactive Counter Triggers (`type = 64`, `i52 = counter role`)
+                if (i52 === 4) {
+                    cityStations.push({
+                        id: "guild_counter",
+                        title: "💁‍♀️ HUNTER'S GUILD COUNTER [F]",
+                        x: wx,
+                        y: 2.35,
+                        z: wz,
+                        radius: 3.8,
+                        color: "#f2c650",
+                    });
+                } else if (i52 === 1) {
+                    cityStations.push({
+                        id: "medical_center",
+                        title: "🏥 PIONEER 2 MEDICAL CENTER [F]",
+                        x: wx,
+                        y: 2.35,
+                        z: wz,
+                        radius: 4.5,
+                        color: "#6fffa8",
+                    });
+                } else if (i52 === 5) {
+                    cityStations.push({
+                        id: "bank_counter",
+                        title: "🏦 CHECK ROOM & SYMBOL BANK [F]",
+                        x: wx,
+                        y: 2.35,
+                        z: wz,
+                        radius: 4.2,
+                        color: "#7cc8ff",
+                    });
+                } else if (i52 === 7) {
+                    cityStations.push({
+                        id: "principal_tyrell",
+                        title: "👑 PRINCIPAL TYRELL, IRENE & MOMOKA — GOVERNMENT DESK [F]",
+                        x: 0.0,
+                        y: 2.55,
+                        z: wz,
+                        radius: 5.2,
+                        color: "#f2c650",
+                    });
+                } else if (i52 === 0 || i52 === 2 || i52 === 3 || i52 === 6) {
+                    shopTriggerAccum.x += wx;
+                    shopTriggerAccum.z += wz;
+                    shopTriggerAccum.count++;
+                }
+            }
+        }
+
+        if (shopTriggerAccum.count > 0) {
+            cityStations.push({
+                id: "shop_plaza",
+                title: "⚔️ PIONEER 2 SHOPPING PLAZA & TEKKER [F]",
+                x: Number((shopTriggerAccum.x / shopTriggerAccum.count).toFixed(2)),
+                y: 2.35,
+                z: Number((shopTriggerAccum.z / shopTriggerAccum.count).toFixed(2)),
+                radius: 7.5,
+                color: "#ffe26a",
+            });
+        }
+    }
+
+    return {
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        sourceGame: "PSOBB data.gsl + scene/*.rel + scene/*.dat",
+        stages: {
+            bb_lobby_01: {
+                vis: "media/pso/scene/map_lobby_01n.rel",
+                col: "media/pso/scene/map_lobby_01c.rel",
+                xvm: "media/pso/scene/map_lobby_01.xvm",
+                label: "PSOBB Visual Lobby 01 (map_lobby_01n/c.rel)",
+                shortLabel: "🏛️ Map: Visual Lobby 01",
+                scale: 0.08,
+                defaultFloorY: 1.6,
+                defaultBgm: "LOBBY.ogg",
+            },
+            bb_city00: {
+                vis: "media/pso/scene/map_city00_00n.rel",
+                col: "media/pso/scene/map_city00_00c.rel",
+                xvm: "media/pso/scene/map_city00.xvm",
+                label: "PSOBB Pioneer 2 City + Principal's Office (map_city00_00n/c.rel)",
+                shortLabel: "🏙️ Map: Pioneer 2 City",
+                scale: 0.08,
+                defaultFloorY: 0.0,
+                defaultBgm: "CITY.ogg",
+            },
+            bb_forest01: {
+                vis: "media/pso/scene/map_forest01n.rel",
+                col: "media/pso/scene/map_forest01c.rel",
+                xvm: "media/pso/scene/map_forest01.xvm",
+                label: "PSOBB Area 1 // Ragol Forest 1 (map_forest01n/c.rel)",
+                shortLabel: "🌲 Map: Ragol Forest 1",
+                scale: 0.08,
+                defaultFloorY: 1.75,
+                defaultBgm: "slbgm_forest.ogg",
+            },
+            bb_cave01: {
+                vis: "media/pso/scene/map_cave01_00n.rel",
+                col: "media/pso/scene/map_cave01_00c.rel",
+                xvm: "media/pso/scene/map_cave01.xvm",
+                label: "PSOBB Area 2 // Ragol Caves 1 (map_cave01_00n/c.rel)",
+                shortLabel: "🌋 Map: Ragol Caves 1",
+                scale: 0.08,
+                defaultFloorY: 0.0,
+                defaultBgm: "CITY.ogg",
+            },
+            bb_machine01: {
+                vis: "media/pso/scene/map_machine01_00n.rel",
+                col: "media/pso/scene/map_machine01_00c.rel",
+                xvm: "media/pso/scene/map_machine01.xvm",
+                label: "PSOBB Area 3 // Ragol Mines 1 (map_machine01_00n/c.rel)",
+                shortLabel: "🤖 Map: Ragol Mines 1",
+                scale: 0.08,
+                defaultFloorY: 0.0,
+                defaultBgm: "CITY.ogg",
+            },
+            bb_ruins01: {
+                vis: "media/pso/scene/map_ruins01_00n.rel",
+                col: "media/pso/scene/map_ruins01_00c.rel",
+                xvm: "media/pso/scene/map_ruins01.xvm",
+                label: "PSOBB Area 4 // Ragol Ruins 1 (map_ruins01_00n/c.rel)",
+                shortLabel: "🏛️ Map: Ragol Ruins 1",
+                scale: 0.08,
+                defaultFloorY: 0.0,
+                defaultBgm: "CITY.ogg",
+            },
+            bb_labo00: {
+                vis: "media/pso/scene/map_labo00_00n.rel",
+                col: "media/pso/scene/map_labo00_00c.rel",
+                xvm: "media/pso/scene/map_labo00.xvm",
+                label: "PSOBB Episode II Lab (map_labo00_00n/c.rel)",
+                shortLabel: "🔬 Map: Episode II Lab",
+                scale: 0.08,
+                defaultFloorY: 0.0,
+                defaultBgm: "LABO.ogg",
+            },
+        },
+        classModels: {
+            humar: { bdy: "plAbdy00.nj", hed: "plAhed00.nj", hai: "plAhai00.nj", xvm: "plAtex.xvm", tint: [0.95, 0.38, 0.32] },
+            hunewearl: { bdy: "plBbdy00.nj", hed: "plBhed00.nj", hai: "plBhai00.nj", xvm: "plBtex.xvm", tint: [0.96, 0.42, 0.68] },
+            hucast: { bdy: "plCbdy00.nj", hed: "plChed00.nj", xvm: "plCtex.xvm", tint: [0.42, 0.78, 0.98] },
+            ramar: { bdy: "plDbdy00.nj", hed: "plDhed00.nj", hai: "plDhai00.nj", xvm: "plDtex.xvm", tint: [0.35, 0.68, 0.42] },
+            racast: { bdy: "plEbdy00.nj", hed: "plEhed00.nj", xvm: "plEtex.xvm", tint: [0.92, 0.68, 0.25] },
+            racaseal: { bdy: "plFbdy00.nj", hed: "plFhed00.nj", xvm: "plFtex.xvm", tint: [0.95, 0.78, 0.88] },
+            fomarl: { bdy: "plGbdy00.nj", hed: "plGhed00.nj", hai: "plGhai00.nj", xvm: "plGtex.xvm", tint: [0.92, 0.85, 0.52] },
+            fonewm: { bdy: "plHbdy00.nj", hed: "plHhed00.nj", hai: "plHhai00.nj", xvm: "plHtex.xvm", tint: [0.68, 0.45, 0.95] },
+            fonewearl: { bdy: "plIbdy00.nj", hed: "plIhed00.nj", hai: "plIhai00.nj", xvm: "plItex.xvm", tint: [0.95, 0.48, 0.85] },
+            hucaseal: { bdy: "plJbdy00.nj", hed: "plJhed00.nj", xvm: "plJtex.xvm", tint: [0.85, 0.28, 0.42] },
+            fomar: { bdy: "plKbdy00.nj", hed: "plKhed00.nj", hai: "plKhai00.nj", xvm: "plKtex.xvm", tint: [0.32, 0.58, 0.95] },
+            ramarl: { bdy: "plLbdy00.nj", hed: "plLhed00.nj", hai: "plLhai00.nj", xvm: "plLtex.xvm", tint: [0.38, 0.92, 0.58] },
+        },
+        npcModels: {
+            npc_trunk: { nj: "npc_trunk.nj", xvm: "npc_trunk.xvm", tint: [0.95, 0.82, 0.55] },
+            npc_nurse: { nj: "npc_nurse.nj", xvm: "npc_nurse.xvm", tint: [0.96, 0.85, 0.9] },
+            npc_tekker: { nj: "npc_tekker.nj", xvm: "npc_tekker.xvm", tint: [0.75, 0.52, 0.95] },
+            npc_tyrell: { nj: "npc_tyrell.nj", xvm: "npc_tyrell.xvm", tint: [0.95, 0.82, 0.42] },
+            npc_irene: { nj: "npc_irene.nj", xvm: "npc_irene.xvm", tint: [0.55, 0.82, 0.95] },
+            npc_momoka: { nj: "npc_momoka.nj", xvm: "npc_momoka.xvm", tint: [0.95, 0.58, 0.82] },
+            npc_hakase: { nj: "npc_hakase.nj", xvm: "npc_hakase.xvm", tint: [0.88, 0.92, 0.96] },
+            npc_gunm: { nj: "npc_gunm.nj", xvm: "npc_gunm.xvm", tint: [0.45, 0.68, 0.52] },
+            npc_gunb2: { nj: "npc_gunb2.nj", xvm: "npc_gunb2.xvm", tint: [0.42, 0.52, 0.68] },
+            npc_shop_weap: { nj: "npc_shop_weap.nj", xvm: "npc_shop_weap.xvm", tint: [0.95, 0.52, 0.38] },
+            npc_shop_armor: { nj: "npc_shop_armor.nj", xvm: "npc_shop_armor.xvm", tint: [0.42, 0.78, 0.95] },
+            npc_shop_tool: { nj: "npc_shop_tool.nj", xvm: "npc_shop_tool.xvm", tint: [0.48, 0.92, 0.58] },
+            npc_cit_efw: { nj: "npc_cit_efw.nj", xvm: "npc_cit_efw.xvm", tint: [0.92, 0.68, 0.78] },
+            npc_cit_etw: { nj: "npc_cit_etw.nj", xvm: "npc_cit_etw.xvm", tint: [0.85, 0.78, 0.52] },
+            npc_cit_eom: { nj: "npc_cit_eom.nj", xvm: "npc_cit_eom.xvm", tint: [0.62, 0.75, 0.88] },
+            npc_cit_efsm: { nj: "npc_cit_efsm.nj", xvm: "npc_cit_efsm.xvm", tint: [0.72, 0.85, 0.68] },
+        },
+        stationsByStage: {
+            bb_city00: cityStations,
+            default: [
+                {
+                    id: "guild_counter",
+                    title: "💁‍♀️ HUNTER'S GUILD COUNTER [F]",
+                    x: 0,
+                    y: 2.85,
+                    z: -5.2,
+                    radius: 3.1,
+                    color: "#f2c650",
+                },
+                {
+                    id: "teleporter_pad",
+                    title: "🟢 RAGOL AREA TELEPORTER (FOREST / CAVES / MINES / RUINS) [F]",
+                    x: 0,
+                    y: 1.95,
+                    z: 4.2,
+                    radius: 2.8,
+                    color: "#50f296",
+                },
+                {
+                    id: "bank_counter",
+                    title: "🏦 CHECK ROOM & SYMBOL BANK [F]",
+                    x: 6.8,
+                    y: 2.55,
+                    z: -0.4,
+                    radius: 2.7,
+                    color: "#7cc8ff",
+                },
+                {
+                    id: "medical_center",
+                    title: "🏥 PIONEER 2 MEDICAL CENTER [F]",
+                    x: -6.8,
+                    y: 2.55,
+                    z: -0.4,
+                    radius: 2.7,
+                    color: "#6fffa8",
+                },
+            ],
+        },
+        cityNpcLayouts,
+        cityStageObjects,
+        cityAircarLanes: [
+            { x: -29.5, y: -3.2, z0: -38, z1: 38, speed: 9.5, phase: 0.0, dir: 1 },
+            { x: -34.0, y: -1.8, z0: 38, z1: -38, speed: 11.2, phase: 2.4, dir: -1 },
+            { x: -39.0, y: -5.4, z0: -42, z1: 42, speed: 8.4, phase: 5.1, dir: 1 },
+            { x: -44.0, y: 0.5, z0: 42, z1: -42, speed: 12.6, phase: 7.7, dir: -1 },
+        ],
+    };
 }
 
 main();

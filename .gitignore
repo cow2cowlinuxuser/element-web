@@ -48,10 +48,11 @@ storybook-static
 /docs/.vitepress/dist
 /docs/.vitepress/cache
 
-# Extracted PSOBB game assets (generated via `pnpm run extract:psobb -- --source /path/to/PSOBB`)
+# Extracted PSOBB game assets & compiled game-pack manifest (generated via `pnpm run extract:psobb -- --source /path/to/PSOBB`)
 /apps/web/res/media/pso/chars/
 /apps/web/res/media/pso/scene/
 /apps/web/res/media/pso/ogg/
+/apps/web/res/media/pso/game-pack.json
 
 # Desktop packaging artifacts
 /apps/desktop/webapp.asar

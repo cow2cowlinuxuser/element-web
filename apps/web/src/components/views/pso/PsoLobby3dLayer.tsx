@@ -12,6 +12,11 @@ import React, { useCallback, useEffect, useRef, useState, type JSX } from "react
 import classNames from "classnames";
 
 import { playPsoSymbolChime, type PsoSymbolChatSpec } from "./PsoSymbolChatMaker";
+import {
+    FALLBACK_PROCEDURAL_GAME_PACK,
+    loadCompiledGamePack,
+    type PsoCompiledGamePack,
+} from "./PsoGamePackLoader";
 
 export type PsoWeaponModelId =
     | "photon_saber"
@@ -2324,6 +2329,23 @@ export function PsoLobby3dLayer({
         }>,
     });
 
+    const [gamePack, setGamePack] = useState<PsoCompiledGamePack>(FALLBACK_PROCEDURAL_GAME_PACK);
+    const gamePackRef = useRef<PsoCompiledGamePack>(FALLBACK_PROCEDURAL_GAME_PACK);
+    gamePackRef.current = gamePack;
+
+    useEffect(() => {
+        let cancelled = false;
+        void loadCompiledGamePack().then((pack) => {
+            if (!cancelled) {
+                gamePackRef.current = pack;
+                setGamePack(pack);
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     // Keep latest props in a ref so the 60FPS WebGL loop NEVER has to tear down and recreate WebGL buffers when remotePlayers or speechBubbles update!
     const renderPropsRef = useRef({
         activeEmote,
@@ -2394,7 +2416,7 @@ export function PsoLobby3dLayer({
         };
     }, []);
 
-    // Load Authentic PSOBB 3D Stage `.rel` (`map_lobby_01`, `map_city00_00`, `map_forest01`, `map_labo00_00`) from `media/pso/scene/`
+    // Load 3D Stage `.rel` dynamically from `game-pack.json` (compiled by `extract:psobb`)
     useEffect(() => {
         if (stageId === "pioneer2_holodeck") {
             loadedStageMeshRef.current = null;
@@ -2403,68 +2425,13 @@ export function PsoLobby3dLayer({
             setLoadedAssetInfo("Pioneer 2 Holodeck (Procedural + KH Keyblade Pack)");
             return;
         }
-        const stageFileMap: Record<
-            Exclude<PsoLobbyStageId, "pioneer2_holodeck">,
-            { vis: string; col: string; xvm: string; label: string; scale: number; defaultFloorY: number }
-        > = {
-            bb_lobby_01: {
-                vis: "media/pso/scene/map_lobby_01n.rel",
-                col: "media/pso/scene/map_lobby_01c.rel",
-                xvm: "media/pso/scene/map_lobby_01.xvm",
-                label: "PSOBB Visual Lobby 01 (map_lobby_01n/c.rel)",
-                scale: 0.08,
-                defaultFloorY: 1.6,
-            },
-            bb_city00: {
-                vis: "media/pso/scene/map_city00_00n.rel",
-                col: "media/pso/scene/map_city00_00c.rel",
-                xvm: "media/pso/scene/map_city00.xvm",
-                label: "PSOBB Pioneer 2 City + Principal's Office (map_city00_00n/c.rel)",
-                scale: 0.08,
-                defaultFloorY: 0.0,
-            },
-            bb_forest01: {
-                vis: "media/pso/scene/map_forest01n.rel",
-                col: "media/pso/scene/map_forest01c.rel",
-                xvm: "media/pso/scene/map_forest01.xvm",
-                label: "PSOBB Area 1 // Ragol Forest 1 (map_forest01n/c.rel)",
-                scale: 0.08,
-                defaultFloorY: 1.75,
-            },
-            bb_cave01: {
-                vis: "media/pso/scene/map_cave01_00n.rel",
-                col: "media/pso/scene/map_cave01_00c.rel",
-                xvm: "media/pso/scene/map_cave01.xvm",
-                label: "PSOBB Area 2 // Ragol Caves 1 (map_cave01_00n/c.rel)",
-                scale: 0.08,
-                defaultFloorY: 0.0,
-            },
-            bb_machine01: {
-                vis: "media/pso/scene/map_machine01_00n.rel",
-                col: "media/pso/scene/map_machine01_00c.rel",
-                xvm: "media/pso/scene/map_machine01.xvm",
-                label: "PSOBB Area 3 // Ragol Mines 1 (map_machine01_00n/c.rel)",
-                scale: 0.08,
-                defaultFloorY: 0.0,
-            },
-            bb_ruins01: {
-                vis: "media/pso/scene/map_ruins01_00n.rel",
-                col: "media/pso/scene/map_ruins01_00c.rel",
-                xvm: "media/pso/scene/map_ruins01.xvm",
-                label: "PSOBB Area 4 // Ragol Ruins 1 (map_ruins01_00n/c.rel)",
-                scale: 0.08,
-                defaultFloorY: 0.0,
-            },
-            bb_labo00: {
-                vis: "media/pso/scene/map_labo00_00n.rel",
-                col: "media/pso/scene/map_labo00_00c.rel",
-                xvm: "media/pso/scene/map_labo00.xvm",
-                label: "PSOBB Episode II Lab (map_labo00_00n/c.rel)",
-                scale: 0.08,
-                defaultFloorY: 0.0,
-            },
-        };
-        const spec = stageFileMap[stageId];
+        const spec = gamePack.stages[stageId];
+        if (!spec) {
+            loadedStageMeshRef.current = null;
+            loadedStageCollisionRef.current = [];
+            simRef.current.py = 0;
+            return;
+        }
         let cancelled = false;
         void (async () => {
             try {
@@ -2491,99 +2458,72 @@ export function PsoLobby3dLayer({
         return () => {
             cancelled = true;
         };
-    }, [stageId]);
+    }, [stageId, gamePack]);
 
-    // Preload all 12 Authentic PSOBB Class `.nj` Character Models + Heads/Hair + `.xvm` Textures from `media/pso/chars/`
+    // Preload Class `.nj` Character Models + NPCs + Motions dynamically from `game-pack.json`
     useEffect(() => {
-        const classFileMap: Record<
-            PsoClassModelId,
-            { bdy: string; hed: string; hai?: string; xvm: string; tint: [number, number, number] }
-        > = {
-            humar: { bdy: "plAbdy00.nj", hed: "plAhed00.nj", hai: "plAhai00.nj", xvm: "plAtex.xvm", tint: [0.95, 0.38, 0.32] },
-            hunewearl: { bdy: "plBbdy00.nj", hed: "plBhed00.nj", hai: "plBhai00.nj", xvm: "plBtex.xvm", tint: [0.96, 0.42, 0.68] },
-            hucast: { bdy: "plCbdy00.nj", hed: "plChed00.nj", xvm: "plCtex.xvm", tint: [0.42, 0.78, 0.98] },
-            ramar: { bdy: "plDbdy00.nj", hed: "plDhed00.nj", hai: "plDhai00.nj", xvm: "plDtex.xvm", tint: [0.35, 0.68, 0.42] },
-            racast: { bdy: "plEbdy00.nj", hed: "plEhed00.nj", xvm: "plEtex.xvm", tint: [0.92, 0.68, 0.25] },
-            racaseal: { bdy: "plFbdy00.nj", hed: "plFhed00.nj", xvm: "plFtex.xvm", tint: [0.95, 0.78, 0.88] },
-            fomarl: { bdy: "plGbdy00.nj", hed: "plGhed00.nj", hai: "plGhai00.nj", xvm: "plGtex.xvm", tint: [0.92, 0.85, 0.52] },
-            fonewm: { bdy: "plHbdy00.nj", hed: "plHhed00.nj", hai: "plHhai00.nj", xvm: "plHtex.xvm", tint: [0.68, 0.45, 0.95] },
-            fonewearl: { bdy: "plIbdy00.nj", hed: "plIhed00.nj", hai: "plIhai00.nj", xvm: "plItex.xvm", tint: [0.95, 0.48, 0.85] },
-            hucaseal: { bdy: "plJbdy00.nj", hed: "plJhed00.nj", xvm: "plJtex.xvm", tint: [0.85, 0.28, 0.42] },
-            fomar: { bdy: "plKbdy00.nj", hed: "plKhed00.nj", hai: "plKhai00.nj", xvm: "plKtex.xvm", tint: [0.32, 0.58, 0.95] },
-            ramarl: { bdy: "plLbdy00.nj", hed: "plLhed00.nj", hai: "plLhai00.nj", xvm: "plLtex.xvm", tint: [0.38, 0.92, 0.58] },
-        };
-        const npcFileMap: Record<PsoNpcModelId, { nj: string; xvm: string; tint: [number, number, number] }> = {
-            npc_trunk: { nj: "npc_trunk.nj", xvm: "npc_trunk.xvm", tint: [0.95, 0.82, 0.55] },
-            npc_nurse: { nj: "npc_nurse.nj", xvm: "npc_nurse.xvm", tint: [0.96, 0.85, 0.9] },
-            npc_tekker: { nj: "npc_tekker.nj", xvm: "npc_tekker.xvm", tint: [0.75, 0.52, 0.95] },
-            npc_tyrell: { nj: "npc_tyrell.nj", xvm: "npc_tyrell.xvm", tint: [0.95, 0.82, 0.42] },
-            npc_irene: { nj: "npc_irene.nj", xvm: "npc_irene.xvm", tint: [0.55, 0.82, 0.95] },
-            npc_momoka: { nj: "npc_momoka.nj", xvm: "npc_momoka.xvm", tint: [0.95, 0.58, 0.82] },
-            npc_hakase: { nj: "npc_hakase.nj", xvm: "npc_hakase.xvm", tint: [0.88, 0.92, 0.96] },
-            npc_gunm: { nj: "npc_gunm.nj", xvm: "npc_gunm.xvm", tint: [0.45, 0.68, 0.52] },
-            npc_gunb2: { nj: "npc_gunb2.nj", xvm: "npc_gunb2.xvm", tint: [0.42, 0.52, 0.68] },
-            npc_shop_weap: { nj: "npc_shop_weap.nj", xvm: "npc_shop_weap.xvm", tint: [0.95, 0.52, 0.38] },
-            npc_shop_armor: { nj: "npc_shop_armor.nj", xvm: "npc_shop_armor.xvm", tint: [0.42, 0.78, 0.95] },
-            npc_shop_tool: { nj: "npc_shop_tool.nj", xvm: "npc_shop_tool.xvm", tint: [0.48, 0.92, 0.58] },
-            npc_cit_efw: { nj: "npc_cit_efw.nj", xvm: "npc_cit_efw.xvm", tint: [0.92, 0.68, 0.78] },
-            npc_cit_etw: { nj: "npc_cit_etw.nj", xvm: "npc_cit_etw.xvm", tint: [0.85, 0.78, 0.52] },
-            npc_cit_eom: { nj: "npc_cit_eom.nj", xvm: "npc_cit_eom.xvm", tint: [0.62, 0.75, 0.88] },
-            npc_cit_efsm: { nj: "npc_cit_efsm.nj", xvm: "npc_cit_efsm.xvm", tint: [0.72, 0.85, 0.68] },
-        };
+        const classFileMap = gamePack.classModels;
+        const npcFileMap = gamePack.npcModels;
         let cancelled = false;
         void (async () => {
             try {
                 await Promise.all([
-                    ...(Object.entries(classFileMap) as Array<[PsoClassModelId, (typeof classFileMap)["humar"]]>).map(
-                        async ([cId, info]) => {
-                            const [bdyRes, hedRes, haiRes, xvmRes] = await Promise.all([
-                                fetch(`media/pso/chars/${info.bdy}`).catch(() => null),
-                                fetch(`media/pso/chars/${info.hed}`).catch(() => null),
-                                info.hai ? fetch(`media/pso/chars/${info.hai}`).catch(() => null) : Promise.resolve(null),
-                                fetch(`media/pso/chars/${info.xvm}`).catch(() => null),
-                            ]);
-                            if (!bdyRes || !bdyRes.ok || cancelled) return;
-                            const [bdyBuf, hedBuf, haiBuf, xvmBuf] = await Promise.all([
-                                bdyRes.arrayBuffer(),
-                                hedRes && hedRes.ok ? hedRes.arrayBuffer() : Promise.resolve(null),
-                                haiRes && haiRes.ok ? haiRes.arrayBuffer() : Promise.resolve(null),
-                                xvmRes && xvmRes.ok ? xvmRes.arrayBuffer() : Promise.resolve(null),
-                            ]);
-                            if (cancelled) return;
-                            loadedClassMeshesRef.current[cId] = parseSegaNinjaNjBuffer(
-                                bdyBuf,
-                                `${cId.toUpperCase()} (${info.bdy})`,
-                                0.135,
-                                info.tint,
-                                hedBuf,
-                                haiBuf,
-                                xvmBuf,
-                            );
-                        },
-                    ),
-                    ...(Object.entries(npcFileMap) as Array<[PsoNpcModelId, (typeof npcFileMap)["npc_trunk"]]>).map(
-                        async ([npcId, info]) => {
-                            const [njRes, xvmRes] = await Promise.all([
-                                fetch(`media/pso/chars/${info.nj}`).catch(() => null),
-                                fetch(`media/pso/chars/${info.xvm}`).catch(() => null),
-                            ]);
-                            if (!njRes || !njRes.ok || cancelled) return;
-                            const [njBuf, xvmBuf] = await Promise.all([
-                                njRes.arrayBuffer(),
-                                xvmRes && xvmRes.ok ? xvmRes.arrayBuffer() : Promise.resolve(null),
-                            ]);
-                            if (cancelled) return;
-                            loadedNpcMeshesRef.current[npcId] = parseSegaNinjaNjBuffer(
-                                njBuf,
-                                `${npcId.toUpperCase()} (${info.nj})`,
-                                0.135,
-                                info.tint,
-                                null,
-                                null,
-                                xvmBuf,
-                            );
-                        },
-                    ),
+                    ...(
+                        Object.entries(classFileMap) as Array<
+                            [PsoClassModelId, NonNullable<(typeof classFileMap)["humar"]>]
+                        >
+                    ).map(async ([cId, info]) => {
+                        if (!info) return;
+                        const [bdyRes, hedRes, haiRes, xvmRes] = await Promise.all([
+                            fetch(`media/pso/chars/${info.bdy}`).catch(() => null),
+                            fetch(`media/pso/chars/${info.hed}`).catch(() => null),
+                            info.hai ? fetch(`media/pso/chars/${info.hai}`).catch(() => null) : Promise.resolve(null),
+                            fetch(`media/pso/chars/${info.xvm}`).catch(() => null),
+                        ]);
+                        if (!bdyRes || !bdyRes.ok || cancelled) return;
+                        const [bdyBuf, hedBuf, haiBuf, xvmBuf] = await Promise.all([
+                            bdyRes.arrayBuffer(),
+                            hedRes && hedRes.ok ? hedRes.arrayBuffer() : Promise.resolve(null),
+                            haiRes && haiRes.ok ? haiRes.arrayBuffer() : Promise.resolve(null),
+                            xvmRes && xvmRes.ok ? xvmRes.arrayBuffer() : Promise.resolve(null),
+                        ]);
+                        if (cancelled) return;
+                        loadedClassMeshesRef.current[cId] = parseSegaNinjaNjBuffer(
+                            bdyBuf,
+                            `${cId.toUpperCase()} (${info.bdy})`,
+                            0.135,
+                            info.tint,
+                            hedBuf,
+                            haiBuf,
+                            xvmBuf,
+                        );
+                    }),
+                    ...(
+                        Object.entries(npcFileMap) as Array<
+                            [PsoNpcModelId, NonNullable<(typeof npcFileMap)["npc_trunk"]>]
+                        >
+                    ).map(async ([npcId, info]) => {
+                        if (!info) return;
+                        const [njRes, xvmRes] = await Promise.all([
+                            fetch(`media/pso/chars/${info.nj}`).catch(() => null),
+                            fetch(`media/pso/chars/${info.xvm}`).catch(() => null),
+                        ]);
+                        if (!njRes || !njRes.ok || cancelled) return;
+                        const [njBuf, xvmBuf] = await Promise.all([
+                            njRes.arrayBuffer(),
+                            xvmRes && xvmRes.ok ? xvmRes.arrayBuffer() : Promise.resolve(null),
+                        ]);
+                        if (cancelled) return;
+                        loadedNpcMeshesRef.current[npcId] = parseSegaNinjaNjBuffer(
+                            njBuf,
+                            `${npcId.toUpperCase()} (${info.nj})`,
+                            0.135,
+                            info.tint,
+                            null,
+                            null,
+                            xvmBuf,
+                        );
+                    }),
                     // Preload Authentic `.njm` Skeletal Animations (from `charamakingmot.bml`, `npcapcmot.bml`, `PlyMotionData.rlc`, `PlyMotionNpcTown.cpt`)
                     ...[
                         "mot_wait_town_m",
@@ -2704,7 +2644,7 @@ export function PsoLobby3dLayer({
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [gamePack]);
 
     const [hudLabels, setHudLabels] = useState<
         Array<{
@@ -3813,56 +3753,24 @@ export function PsoLobby3dLayer({
                 rpState.reShade.khOverhaulMode ? [0.95, 0.78, 1.15] : [1, 1, 1],
             );
 
-            // 1B. Draw Authentic Pioneer 2 Stage Objects from `map_city00_00o.dat` (`bm_obj_city_common.bml` + `bm_obj_city_common.xvm`):
-            // - `OBJ[08]` (`type = 67`): Main Ragol Teleporter Ring (`obj_warp_big.xj`)
-            // - `OBJ[12]` & `OBJ[09]` (`type = 69`): Principal's Office Warp Pads (`obj_warp_small.xj`) + Elevator Alcove (`obj_elv_alcove.xj`)
-            // - `OBJ[17..21]` (`type = 70..73`): Sliding Automatic Doors (`obj_shopdoor.xj`, `obj_hunter_door.xj`, `obj_med_door.xj`)
-            // - `OBJ[13..16]` (`type = 65`): Flying Pioneer 2 Traffic Aircars (`obj_aircar01.nj`)
+            // 1B. Draw Stage Objects & Aircars dynamically from `gamePackRef.current` (compiled from `map_city00_00o.dat`)
             if (rpState.stageId === "bb_city00") {
                 const cObjs = loadedCityObjectsRef.current;
-                if (cObjs.warp_big) {
-                    drawMesh(
-                        cObjs.warp_big,
-                        mat4TRS(28.8, 0.08, 2.08, (28.1 * Math.PI) / 180, 0, 1, 1, 1),
-                    );
-                }
-                if (cObjs.warp_small) {
-                    drawMesh(cObjs.warp_small, mat4TRS(0.0, 0.0, -4.8, 0, 0, 1, 1, 1));
-                    drawMesh(
-                        cObjs.warp_small,
-                        mat4TRS(0.0, 0.0, -138.4, (168.8 * Math.PI) / 180, 0, 1, 1, 1),
-                    );
-                }
-                if (cObjs.elv_alcove) {
-                    drawMesh(cObjs.elv_alcove, mat4TRS(0.0, 0.0, -4.8, 0, 0, 1, 1, 1));
-                }
-                const cityDoors: Array<{
-                    mesh: CustomMeshGeometry | undefined;
-                    x: number;
-                    y: number;
-                    z: number;
-                    yawDeg: number;
-                }> = [
-                    { mesh: cObjs.shopdoor, x: -13.2, y: 0.0, z: 11.8, yawDeg: 180 },
-                    { mesh: cObjs.hunter_door, x: 14.8, y: 0.0, z: 13.84, yawDeg: 180 },
-                    { mesh: cObjs.hunter_door, x: 20.32, y: 0.0, z: 2.0, yawDeg: 90 },
-                    { mesh: cObjs.med_door, x: 15.48, y: 0.0, z: -7.48, yawDeg: 315 },
-                ];
-                for (const d of cityDoors) {
-                    if (!d.mesh) continue;
-                    const dist = Math.hypot(sim.px - d.x, sim.pz - d.z);
-                    const openAmt = dist < 4.5 ? Math.min(1, (4.5 - dist) / 2.2) : 0;
-                    const dyaw = (d.yawDeg * Math.PI) / 180;
-                    drawMesh(d.mesh, mat4TRS(d.x, d.y + openAmt * 2.6, d.z, dyaw, 0, 1, 1, 1));
+                const activePack = gamePackRef.current;
+                for (const obj of activePack.cityStageObjects) {
+                    const mesh = cObjs[obj.kind];
+                    if (!mesh) continue;
+                    const dyaw = (obj.yawDeg * Math.PI) / 180;
+                    if (obj.kind === "shopdoor" || obj.kind === "hunter_door" || obj.kind === "med_door") {
+                        const dist = Math.hypot(sim.px - obj.x, sim.pz - obj.z);
+                        const openAmt = dist < 4.5 ? Math.min(1, (4.5 - dist) / 2.2) : 0;
+                        drawMesh(mesh, mat4TRS(obj.x, obj.y + openAmt * 2.6, obj.z, dyaw, 0, 1, 1, 1));
+                    } else {
+                        drawMesh(mesh, mat4TRS(obj.x, obj.y, obj.z, dyaw, 0, 1, 1, 1));
+                    }
                 }
                 if (cObjs.aircar) {
-                    const aircarLanes = [
-                        { x: -29.5, y: -3.2, z0: -38, z1: 38, speed: 9.5, phase: 0.0, dir: 1 },
-                        { x: -34.0, y: -1.8, z0: 38, z1: -38, speed: 11.2, phase: 2.4, dir: -1 },
-                        { x: -39.0, y: -5.4, z0: -42, z1: 42, speed: 8.4, phase: 5.1, dir: 1 },
-                        { x: -44.0, y: 0.5, z0: 42, z1: -42, speed: 12.6, phase: 7.7, dir: -1 },
-                    ];
-                    for (const lane of aircarLanes) {
+                    for (const lane of activePack.cityAircarLanes) {
                         const span = Math.abs(lane.z1 - lane.z0);
                         const progT = ((now * 0.001 * lane.speed + lane.phase * 10) % span) / span;
                         const az = lane.z0 + (lane.z1 - lane.z0) * progT;
@@ -4334,137 +4242,12 @@ export function PsoLobby3dLayer({
                 }
             }
 
-            // 5. Project Episode I Pioneer 2 Hunter's Guild Concourse Station Markers, Teleporters & Authentic NPCs (`map_city00_00e.dat` + `map_city00_00o.dat`)
-            const guildStations: Array<{
-                id: PsoGuildStationId;
-                title: string;
-                x: number;
-                y: number;
-                z: number;
-                radius: number;
-                color: string;
-            }> =
-                rpState.stageId === "bb_city00"
-                    ? [
-                          {
-                              // OBJ[10] (type=64, i52=4) & NPC[00] (f60=850) in Sec 10 Hunter's Guild
-                              id: "guild_counter",
-                              title: "💁‍♀️ HUNTER'S GUILD COUNTER [F]",
-                              x: 14.32,
-                              y: 2.35,
-                              z: 27.36,
-                              radius: 3.8,
-                              color: "#f2c650",
-                          },
-                          {
-                              // OBJ[00] (type=64, i52=1) & NPC[13] (f60=860) in Sec 40 Medical Center
-                              id: "medical_center",
-                              title: "🏥 PIONEER 2 MEDICAL CENTER [F]",
-                              x: 17.02,
-                              y: 2.35,
-                              z: -23.08,
-                              radius: 4.5,
-                              color: "#6fffa8",
-                          },
-                          {
-                              // OBJ[11] (type=64, i52=5) & NPC[20] (f60=840) in Sec 20 Check Room / Bank
-                              id: "bank_counter",
-                              title: "🏦 CHECK ROOM & SYMBOL BANK [F]",
-                              x: -20.1,
-                              y: 2.35,
-                              z: -2.52,
-                              radius: 4.2,
-                              color: "#7cc8ff",
-                          },
-                          {
-                              // OBJ[01..03, 19] (type=64, i52=0,2,3,6) & NPC[08..11] (f60=800..830) in Sec 30 Shopping Plaza
-                              id: "shop_plaza",
-                              title: "⚔️ PIONEER 2 SHOPPING PLAZA & TEKKER [F]",
-                              x: -14.7,
-                              y: 2.35,
-                              z: 20.8,
-                              radius: 7.5,
-                              color: "#ffe26a",
-                          },
-                          {
-                              // OBJ[08] (type=67) Main Ragol Teleporter Pad in Sec 20 East Teleporter Room
-                              id: "teleporter_pad",
-                              title: "🟢 RAGOL AREA TELEPORTER (FOREST / CAVES / MINES / RUINS) [F]",
-                              x: 28.8,
-                              y: 2.15,
-                              z: 2.08,
-                              radius: 4.2,
-                              color: "#50f296",
-                          },
-                          {
-                              // OBJ[06] (type=2) Central Teleporter Alcove to Principal's Office in Sec 20
-                              id: "principal_warp_to_office",
-                              title: "🏛️ PRINCIPAL'S OFFICE TELEPORTER PAD [F]",
-                              x: 0.0,
-                              y: 1.95,
-                              z: -4.8,
-                              radius: 3.2,
-                              color: "#c88aff",
-                          },
-                          {
-                              // OBJ[20] (type=2) Return Teleporter Pad from Principal's Office in Sec 41
-                              id: "principal_warp_to_city",
-                              title: "🏙️ RETURN TO PIONEER 2 CITY CONCOURSE [F]",
-                              x: 0.0,
-                              y: 1.95,
-                              z: -138.4,
-                              radius: 3.6,
-                              color: "#50f296",
-                          },
-                          {
-                              // NPC[17..19] & OBJ[28] (type=64, i52=7) Government Desk in Sec 41 Principal's Office
-                              id: "principal_tyrell",
-                              title: "👑 PRINCIPAL TYRELL, IRENE & MOMOKA — GOVERNMENT DESK [F]",
-                              x: 0.0,
-                              y: 2.55,
-                              z: -161.2,
-                              radius: 5.2,
-                              color: "#f2c650",
-                          },
-                      ]
-                    : [
-                          {
-                              id: "guild_counter",
-                              title: "💁‍♀️ HUNTER'S GUILD COUNTER [F]",
-                              x: 0,
-                              y: 2.85,
-                              z: -5.2,
-                              radius: 3.1,
-                              color: "#f2c650",
-                          },
-                          {
-                              id: "teleporter_pad",
-                              title: "🟢 RAGOL AREA TELEPORTER (FOREST / CAVES / MINES / RUINS) [F]",
-                              x: 0,
-                              y: 1.95,
-                              z: 4.2,
-                              radius: 2.8,
-                              color: "#50f296",
-                          },
-                          {
-                              id: "bank_counter",
-                              title: "🏦 CHECK ROOM & SYMBOL BANK [F]",
-                              x: 6.8,
-                              y: 2.55,
-                              z: -0.4,
-                              radius: 2.7,
-                              color: "#7cc8ff",
-                          },
-                          {
-                              id: "medical_center",
-                              title: "🏥 PIONEER 2 MEDICAL CENTER [F]",
-                              x: -6.8,
-                              y: 2.55,
-                              z: -0.4,
-                              radius: 2.7,
-                              color: "#6fffa8",
-                          },
-                      ];
+            // 5. Project Station Markers & Teleporters dynamically from `gamePackRef.current` (compiled from `map_city00_00o.dat`)
+            const activePack = gamePackRef.current;
+            const guildStations =
+                activePack.stationsByStage[rpState.stageId] ??
+                activePack.stationsByStage.default ??
+                [];
 
             // Draw glowing 3D Teleporter Pads on Pioneer 2 & Ragol stages so both teleporters are unmistakable!
             for (const st of guildStations) {
@@ -4510,311 +4293,13 @@ export function PsoLobby3dLayer({
                 setNearbyStation(closestStation);
             }
 
-            // 6. Authentic Pioneer 2 NPC Placement from `map_city00_00e.dat`, `e_s.dat`, `e_d.dat`, and `e_c1.dat`
-            // Decoded directly from `psobb.exe` Stage 0 NPC Spawn Table (`VA = 0x009f9f00`) & 72-byte `e.dat` entries + `map_city00_00o.dat` counter triggers (`type = 64`).
+            // 6. Render NPC Placements dynamically from `gamePackRef.current` (compiled from `map_city00_00e*.dat`)
             if (rpState.stageId === "bb_city00" && rpState.spawnBots) {
                 const evtMode = rpState.cityEventLayout;
-                const isOfflineLike = evtMode === "e_d" || evtMode === "e_c1";
-                const pioneer2Npcs: Array<{
-                    id: string;
-                    name: string;
-                    x: number;
-                    y: number;
-                    z: number;
-                    yawDeg: number;
-                    c: PsoClassModelId;
-                    npcModelId: PsoNpcModelId;
-                    wanderRadius?: number;
-                }> = [
-                    // Section 10: Hunter's Guild Counter (`f60 = 850`, `OBJ[10]` `i52 = 4`)
-                    isOfflineLike
-                        ? {
-                              id: "npc-0",
-                              name: "GUILD OFFICER [Offline Counter]",
-                              x: 14.32,
-                              y: 0.0,
-                              z: 27.36,
-                              yawDeg: 135,
-                              c: "humar",
-                              npcModelId: "npc_shop_armor",
-                          }
-                        : {
-                              id: "npc-0",
-                              name: "GUILD CLERK [Quest Counter]",
-                              x: 14.32,
-                              y: 0.0,
-                              z: 27.36,
-                              yawDeg: 135,
-                              c: "fomarl",
-                              npcModelId: "npc_trunk",
-                          },
-                    // Section 20: Central Concourse Citizens, Military Guards & Check Room / Bank Clerk
-                    {
-                        id: "npc-1",
-                        name: "PIONEER CITIZEN [Concourse N]",
-                        x: 13.44,
-                        y: 0.0,
-                        z: 6.72,
-                        yawDeg: 225,
-                        c: "fomarl",
-                        npcModelId: isOfflineLike ? "npc_cit_eom" : "npc_cit_efw",
-                        wanderRadius: 23,
-                    },
-                    {
-                        id: "npc-2",
-                        name: "PIONEER CITIZEN [Concourse S]",
-                        x: 12.48,
-                        y: 0.0,
-                        z: -4.0,
-                        yawDeg: 315,
-                        c: "ramarl",
-                        npcModelId: "npc_cit_etw",
-                        wanderRadius: 22,
-                    },
-                    {
-                        id: "npc-3",
-                        name: "MILITARY GUARD [Ragol Gate S]",
-                        x: 19.04,
-                        y: 0.0,
-                        z: -1.12,
-                        yawDeg: 315,
-                        c: "ramar",
-                        npcModelId: "npc_gunb2",
-                    },
-                    {
-                        id: "npc-4",
-                        name: "MILITARY GUARD [Ragol Gate N]",
-                        x: 19.04,
-                        y: 0.0,
-                        z: 5.04,
-                        yawDeg: 225,
-                        c: "ramar",
-                        npcModelId: "npc_gunm",
-                    },
-                    {
-                        id: "npc-5",
-                        name: "PIONEER CITIZEN [Central Bridge]",
-                        x: -0.16,
-                        y: 0.0,
-                        z: 2.8,
-                        yawDeg: 180,
-                        c: "fomar",
-                        npcModelId: isOfflineLike ? "npc_cit_efw" : "npc_cit_eom",
-                        wanderRadius: 18,
-                    },
-                    {
-                        id: "npc-6",
-                        name: "PIONEER CITIZEN [West Promenade]",
-                        x: -11.76,
-                        y: 0.0,
-                        z: -0.64,
-                        yawDeg: 147.7,
-                        c: "humar",
-                        npcModelId: isOfflineLike ? "npc_cit_efw" : "npc_cit_efsm",
-                        wanderRadius: 37,
-                    },
-                    ...(!isOfflineLike
-                        ? [
-                              {
-                                  id: "npc-7",
-                                  name: "PIONEER CITIZEN [South Promenade]",
-                                  x: -16.96,
-                                  y: 0.0,
-                                  z: -11.2,
-                                  yawDeg: 0,
-                                  c: "fomar" as PsoClassModelId,
-                                  npcModelId: "npc_cit_eom" as PsoNpcModelId,
-                                  wanderRadius: 25,
-                              },
-                          ]
-                        : []),
-                    ...(evtMode === "e_c1"
-                        ? [
-                              {
-                                  id: "npc-c1-7",
-                                  name: "CHALLENGE OFFICER [Patrol]",
-                                  x: 5.85,
-                                  y: 0.0,
-                                  z: -0.2,
-                                  yawDeg: 270,
-                                  c: "ramar" as PsoClassModelId,
-                                  npcModelId: "npc_gunb2" as PsoNpcModelId,
-                                  wanderRadius: 25,
-                              },
-                          ]
-                        : []),
-                    // `NPC[20]` (`f60 = 840`, `OBJ[11]` `i52 = 5`, `type = 0x1d` = `bm_n_trunk_i_body.bml`): Check Room / Bank Clerk!
-                    {
-                        id: "npc-20",
-                        name: "BANK CLERK [Check Room]",
-                        x: -21.0,
-                        y: 0.0,
-                        z: -1.96,
-                        yawDeg: 112.5,
-                        c: "fonewearl",
-                        npcModelId: "npc_trunk",
-                    },
-                    // Section 30: Pioneer 2 Shopping Plaza & The Tekker (`f60 = 800..830`, `OBJ[01..03, 19]`)
-                    {
-                        id: "npc-8",
-                        name: "THE TEKKER [Special Appraiser]",
-                        x: -9.7,
-                        y: 0.21,
-                        z: 20.38,
-                        yawDeg: 225,
-                        c: "fomar",
-                        npcModelId: "npc_tekker",
-                    },
-                    {
-                        id: "npc-9",
-                        name: "WEAPON SHOP [Arms Dealer]",
-                        x: -13.23,
-                        y: 0.21,
-                        z: 22.94,
-                        yawDeg: 180,
-                        c: "humar",
-                        npcModelId: "npc_shop_weap",
-                    },
-                    {
-                        id: "npc-10",
-                        name: "TOOL SHOP [Items & Tech Disks]",
-                        x: -16.71,
-                        y: 0.21,
-                        z: 22.14,
-                        yawDeg: 147.7,
-                        c: "hunewearl",
-                        npcModelId: "npc_shop_tool",
-                    },
-                    {
-                        id: "npc-11",
-                        name: "ARMOR SHOP [Frames & Barriers]",
-                        x: -19.27,
-                        y: 0.21,
-                        z: 19.58,
-                        yawDeg: 120.9,
-                        c: "ramar",
-                        npcModelId: "npc_shop_armor",
-                    },
-                    ...(!isOfflineLike
-                        ? [
-                              {
-                                  id: "npc-12",
-                                  name: "PLAZA SHOPPER [Sec 30]",
-                                  x: -14.48,
-                                  y: 0.0,
-                                  z: 15.68,
-                                  yawDeg: 112.5,
-                                  c: "ramarl" as PsoClassModelId,
-                                  npcModelId: "npc_cit_etw" as PsoNpcModelId,
-                              },
-                          ]
-                        : []),
-                    // Section 40: Pioneer 2 Medical Center (`f60 = 860`, `OBJ[00]` `i52 = 1`, `type = 0x1f` = `bm_n_nurse_i_body.bml`)
-                    {
-                        id: "npc-13",
-                        name: "MEDICAL NURSE [Heal Counter]",
-                        x: 17.02,
-                        y: 0.24,
-                        z: -23.43,
-                        yawDeg: 0,
-                        c: "fomarl",
-                        npcModelId: "npc_nurse",
-                    },
-                    ...(!isOfflineLike
-                        ? [
-                              {
-                                  id: "npc-14",
-                                  name: "CLINIC NURSE [Medical Lobby]",
-                                  x: 21.28,
-                                  y: 0.0,
-                                  z: -17.12,
-                                  yawDeg: 315,
-                                  c: "fomarl" as PsoClassModelId,
-                                  npcModelId: "npc_nurse" as PsoNpcModelId,
-                              },
-                          ]
-                        : []),
-                    // Section 41: The Principal's Office (Z = -160; omitted in `map_city00_00e_s.dat` Online Solo Mode!)
-                    ...(evtMode !== "e_s"
-                        ? [
-                              {
-                                  id: "npc-17",
-                                  name: "👑 PRINCIPAL COLIN TYRELL",
-                                  x: 0.0,
-                                  y: 0.0,
-                                  z: -162.48,
-                                  yawDeg: 0,
-                                  c: "fomar" as PsoClassModelId,
-                                  npcModelId: "npc_tyrell" as PsoNpcModelId,
-                              },
-                              {
-                                  id: "npc-18",
-                                  name: "SECRETARY IRENE",
-                                  x: 3.76,
-                                  y: 0.0,
-                                  z: -160.0,
-                                  yawDeg: 270,
-                                  c: "fomarl" as PsoClassModelId,
-                                  npcModelId: "npc_irene" as PsoNpcModelId,
-                              },
-                              ...(evtMode === "e"
-                                  ? [
-                                        {
-                                            id: "npc-19",
-                                            name: "MOMOKA [Government Quest]",
-                                            x: -3.76,
-                                            y: 0.0,
-                                            z: -160.0,
-                                            yawDeg: 90,
-                                            c: "fonewearl" as PsoClassModelId,
-                                            npcModelId: "npc_momoka" as PsoNpcModelId,
-                                        },
-                                        {
-                                            id: "npc-15",
-                                            name: "LAB RESEARCHER [Right]",
-                                            x: 2.0,
-                                            y: 0.0,
-                                            z: -156.4,
-                                            yawDeg: 247.5,
-                                            c: "fonewm" as PsoClassModelId,
-                                            npcModelId: "npc_hakase" as PsoNpcModelId,
-                                        },
-                                        {
-                                            id: "npc-16",
-                                            name: "LAB RESEARCHER [Left]",
-                                            x: -2.0,
-                                            y: 0.0,
-                                            z: -156.4,
-                                            yawDeg: 112.5,
-                                            c: "fonewm" as PsoClassModelId,
-                                            npcModelId: "npc_hakase" as PsoNpcModelId,
-                                        },
-                                    ]
-                                  : [
-                                        {
-                                            id: "npc-15",
-                                            name: "LAB RESEARCHER [North]",
-                                            x: -3.84,
-                                            y: 0.0,
-                                            z: -152.96,
-                                            yawDeg: 112.5,
-                                            c: "fonewm" as PsoClassModelId,
-                                            npcModelId: "npc_hakase" as PsoNpcModelId,
-                                        },
-                                        {
-                                            id: "npc-16",
-                                            name: "LAB RESEARCHER [South]",
-                                            x: -2.74,
-                                            y: 0.0,
-                                            z: -157.09,
-                                            yawDeg: 90,
-                                            c: "fonewm" as PsoClassModelId,
-                                            npcModelId: "npc_hakase" as PsoNpcModelId,
-                                        },
-                                    ]),
-                          ]
-                        : []),
-                ];
+                const pioneer2Npcs =
+                    activePack.cityNpcLayouts[evtMode] ??
+                    activePack.cityNpcLayouts.e ??
+                    [];
                 for (const npc of pioneer2Npcs) {
                     const distToPlayer = Math.hypot(sim.px - npc.x, sim.pz - npc.z);
                     if (distToPlayer > 65) continue;
