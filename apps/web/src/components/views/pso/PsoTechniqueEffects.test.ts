@@ -12,8 +12,11 @@ import {
     getTechSpec,
     isAndroidClass,
     isTechEffectAlive,
+    PSO_TECH_XJ_ASSETS,
     sampleTechEffect,
     type PsoActiveTechEffect,
+    type PsoTechMeshKey,
+    type PsoTechXjKey,
 } from "./PsoTechniqueEffects";
 
 function effectFor(name: string): PsoActiveTechEffect {
@@ -53,7 +56,33 @@ describe("PsoTechniqueEffects", () => {
             const fx = effectFor(name);
             const calls = sampleTechEffect(fx, (fx.spec.releaseSec + 0.3) * 1000);
             expect(calls.length).toBeGreaterThan(0);
-            for (const c of calls) expect(meshes[c.mesh].vertexCount).toBeGreaterThan(0);
+            for (const c of calls) {
+                expect(c.mesh.startsWith("xj_")).toBe(false);
+                expect(meshes[c.mesh as PsoTechMeshKey].vertexCount).toBeGreaterThan(0);
+            }
         }
+    });
+
+    it("uses the client's meshes and motions once they have loaded", () => {
+        const all = new Set(Object.keys(PSO_TECH_XJ_ASSETS) as PsoTechXjKey[]);
+        const at = (name: string, secsAfterRelease: number): ReturnType<typeof sampleTechEffect> => {
+            const fx = effectFor(name);
+            return sampleTechEffect(fx, (fx.spec.releaseSec + secsAfterRelease) * 1000, all);
+        };
+
+        expect(at("Foie", 0.2).map((c) => c.mesh)).toContain("xj_foie");
+        expect(at("Rafoie", 0.2).map((c) => c.mesh)).toEqual(expect.arrayContaining(["xj_rafoie", "xj_rafoie_shock", "xj_ringwave"]));
+
+        const spikes = at("Barta", 0.5).filter((c) => c.mesh === "xj_barta");
+        expect(spikes.length).toBeGreaterThan(1);
+        expect(spikes[0].motionFrame).toBe(9);
+
+        const gibarta = at("Gibarta", 0.5).find((c) => c.mesh === "xj_gibarta");
+        expect(gibarta?.motionFrame).toBeCloseTo(15);
+
+        // Procedural ground rings become the client's ring wave, sized to the same radius.
+        const resta = at("Resta", 0.3);
+        expect(resta.some((c) => c.mesh === "ring" && c.pitch === 0)).toBe(false);
+        expect(resta.some((c) => c.mesh === "xj_ringwave")).toBe(true);
     });
 });

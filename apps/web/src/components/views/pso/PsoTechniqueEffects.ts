@@ -9,9 +9,10 @@ You may obtain a copy of the License at
 */
 
 /*
- * Procedural stand-ins for PSOBB technique effects, staged like the client:
+ * PSOBB technique effects, staged like the client:
  * startup -> charge (element-coloured particles at the hands) -> release -> effect.
- * The client's own effect meshes live in `bm_technic.bml` / `bm_tec_regurar.bml` (XJ format) and are not parsed yet.
+ * Foie, Rafoie, the Barta family and ground ring waves use the client's own meshes from `bm_technic.bml` /
+ * `bm_tec_regurar.bml` when they have been extracted to `media/pso/tech/`; everything else is procedural.
  */
 
 type Vec3 = [number, number, number];
@@ -28,6 +29,27 @@ export interface PsoTechEffectMesh {
 }
 
 export type PsoTechMeshKey = "orb" | "ring" | "shard" | "bolt" | "column";
+
+export type PsoTechXjKey = "xj_foie" | "xj_rafoie" | "xj_rafoie_shock" | "xj_barta" | "xj_gibarta" | "xj_rabarta" | "xj_ringwave";
+
+/** Files under `media/pso/tech/`. Motions run at 30 frames per second. */
+export const PSO_TECH_XJ_ASSETS: Record<PsoTechXjKey, { model: string; texture: string; motion?: string }> = {
+    xj_foie: { model: "eff_f_foie.xj", texture: "tecregular.xvm" },
+    xj_rafoie: { model: "eff_rafoie.xj", texture: "technic.xvm" },
+    xj_rafoie_shock: { model: "eff_f_rafoie_shushku.xj", texture: "technic.xvm" },
+    xj_barta: { model: "eff_f_bartaturara.xj", texture: "technic.xvm", motion: "eff_f_bartaturara.njm" },
+    xj_gibarta: { model: "eff_f_gibarta_01.xj", texture: "technic.xvm", motion: "eff_f_gibarta_01.njm" },
+    xj_rabarta: { model: "eff_f_rabarta.xj", texture: "technic.xvm", motion: "eff_f_rabarta.njm" },
+    xj_ringwave: { model: "eff_f_ringwave.xj", texture: "technic.xvm" },
+};
+
+/** Same unit scale as the player models, so effect meshes keep their in-game size relative to characters. */
+export const PSO_TECH_XJ_WORLD_SCALE = 0.135;
+
+const MOTION_FPS = 30;
+const RINGWAVE_RADIUS = 105.6 * PSO_TECH_XJ_WORLD_SCALE;
+/** Turns a mesh authored with +Z up (Rafoie's dome, its shock disc) upright in the lobby's Y-up world. */
+const Z_UP_PITCH = -Math.PI / 2;
 
 export type PsoTechFamily =
     | "foie"
@@ -65,7 +87,9 @@ export interface PsoActiveTechEffect {
 }
 
 export interface PsoTechDrawCall {
-    mesh: PsoTechMeshKey;
+    mesh: PsoTechMeshKey | PsoTechXjKey;
+    /** Frame of the mesh's own `.njm` motion, if it has one. */
+    motionFrame?: number;
     x: number;
     y: number;
     z: number;
@@ -258,7 +282,7 @@ export function buildTechEffectMeshes(): Record<PsoTechMeshKey, PsoTechEffectMes
 }
 
 function call(
-    mesh: PsoTechMeshKey,
+    mesh: PsoTechMeshKey | PsoTechXjKey,
     x: number,
     y: number,
     z: number,
@@ -277,8 +301,27 @@ const fadeOut = (t: number): number => 1 - Math.max(0, Math.min(1, t));
 /**
  * Returns the draw calls for an effect at time `now` (ms, `performance.now()` clock).
  * Positions are world-space; forward for `yaw` is (sin yaw, cos yaw).
+ * `xjAvailable` lists the client meshes that have loaded; techniques without one fall back to procedural shapes.
  */
-export function sampleTechEffect(effect: PsoActiveTechEffect, now: number): PsoTechDrawCall[] {
+export function sampleTechEffect(
+    effect: PsoActiveTechEffect,
+    now: number,
+    xjAvailable: ReadonlySet<PsoTechXjKey> = new Set(),
+): PsoTechDrawCall[] {
+    const out = sampleTechEffectCalls(effect, now, xjAvailable);
+    if (!xjAvailable.has("xj_ringwave")) return out;
+    return out.map((c) =>
+        c.mesh === "ring" && c.pitch === 0
+            ? { ...c, mesh: "xj_ringwave", sx: c.sx / RINGWAVE_RADIUS, sy: 1, sz: c.sz / RINGWAVE_RADIUS }
+            : c,
+    );
+}
+
+function sampleTechEffectCalls(
+    effect: PsoActiveTechEffect,
+    now: number,
+    xjAvailable: ReadonlySet<PsoTechXjKey>,
+): PsoTechDrawCall[] {
     const { spec, x, y, z, yaw } = effect;
     const t = (now - effect.bornAt) / 1000;
     const out: PsoTechDrawCall[] = [];
@@ -301,9 +344,38 @@ export function sampleTechEffect(effect: PsoActiveTechEffect, now: number): PsoT
     const p = Math.min(1, e / spec.effectSec);
     const tier = spec.tier;
 
+    const motion = (secs: number, frames: number): number => Math.min(frames - 1, Math.max(0, secs * MOTION_FPS));
+
     switch (spec.family) {
         case "foie": {
-            if (tier === 0) {
+            const hasFireball = xjAvailable.has("xj_foie");
+            if (tier === 0 && hasFireball) {
+                const travel = Math.min(1, e / 0.45);
+                const d = 0.6 + travel * 6;
+                const bx = x + fx * d;
+                const bz = z + fz * d;
+                if (travel < 1) {
+                    out.push(call("xj_foie", bx, y + 1.1, bz, 0.9, [1, 1, 1], 1, e * 14));
+                } else {
+                    const b = (e - 0.45) / (spec.effectSec - 0.45);
+                    out.push(call("xj_foie", bx, y + 1.1, bz, 0.9 + b * 2.4, [1, 1, 1], fadeOut(b), e * 14));
+                }
+            } else if (tier === 1 && hasFireball) {
+                for (let i = 0; i < 8; i++) {
+                    const a = (i / 8) * Math.PI * 2 + e * 5;
+                    const r = 0.8 + p * 3.2;
+                    out.push(call("xj_foie", x + Math.cos(a) * r, y + 0.9, z + Math.sin(a) * r, 0.7, [1, 1, 1], fadeOut((p - 0.6) / 0.4), e * 10 + i));
+                }
+            } else if (tier === 2 && xjAvailable.has("xj_rafoie")) {
+                const ex = x + fx * 4;
+                const ez = z + fz * 4;
+                const grow = Math.min(1, e / 0.35);
+                out.push(call("xj_rafoie", ex, y, ez, 0.35 + grow * 0.75, [1, 1, 1], fadeOut((p - 0.45) / 0.55), e * 2, Z_UP_PITCH));
+                if (xjAvailable.has("xj_rafoie_shock")) {
+                    out.push(call("xj_rafoie_shock", ex, y + 0.08, ez, 1 + p * 3, [1, 1, 1], fadeOut(p), 0, Z_UP_PITCH));
+                }
+                out.push(call("ring", ex, y + 0.05, ez, 0.5 + p * 5, c, fadeOut(p)));
+            } else if (tier === 0) {
                 // Fireball flies forward, then bursts.
                 const travel = Math.min(1, e / 0.45);
                 const d = 0.6 + travel * 6;
@@ -334,6 +406,31 @@ export function sampleTechEffect(effect: PsoActiveTechEffect, now: number): PsoT
             break;
         }
         case "barta": {
+            if (tier === 0 && xjAvailable.has("xj_barta")) {
+                // A line of ice spikes erupts forward; each spike plays bartaturara's own grow-and-twist motion.
+                for (let s = 0; s < 7; s++) {
+                    const appear = s * 0.06;
+                    if (e < appear) break;
+                    const d = 0.9 + s * 0.9;
+                    const age = (e - appear) / (spec.effectSec - appear);
+                    const spike = call("xj_barta", x + fx * d, y, z + fz * d, 1.1, [1, 1, 1], fadeOut((age - 0.6) / 0.4), yaw + s * 0.7);
+                    spike.motionFrame = motion(e - appear, 10);
+                    out.push(spike);
+                }
+                break;
+            }
+            if (tier === 1 && xjAvailable.has("xj_gibarta")) {
+                const ring = call("xj_gibarta", x, y, z, 0.6, [1, 1, 1], fadeOut((p - 0.65) / 0.35), yaw);
+                ring.motionFrame = motion(e, 31);
+                out.push(ring);
+                break;
+            }
+            if (tier === 2 && xjAvailable.has("xj_rabarta")) {
+                const storm = call("xj_rabarta", x, y, z, 1.4, [1, 1, 1], fadeOut((p - 0.65) / 0.35), yaw);
+                storm.motionFrame = motion(e, 31);
+                out.push(storm);
+                break;
+            }
             const lines = tier === 0 ? [0] : tier === 1 ? [-0.5, 0, 0.5] : Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2);
             for (const offset of lines) {
                 const ly = tier === 2 ? offset : yaw + offset;

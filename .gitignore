@@ -53,6 +53,7 @@ storybook-static
 /apps/web/res/media/pso/scene/
 /apps/web/res/media/pso/ogg/
 /apps/web/res/media/pso/ui/
+/apps/web/res/media/pso/tech/
 /apps/web/res/media/pso/game-pack.json
 
 # Desktop packaging artifacts

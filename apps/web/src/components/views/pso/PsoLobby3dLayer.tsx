@@ -17,10 +17,14 @@ import {
     getTechSpec,
     isAndroidClass,
     isTechEffectAlive,
+    PSO_TECH_XJ_ASSETS,
+    PSO_TECH_XJ_WORLD_SCALE,
     sampleTechEffect,
     techCastDurationSec,
     type PsoActiveTechEffect,
+    type PsoTechXjKey,
 } from "./PsoTechniqueEffects";
+import { ninjaObjectMatrix, parseNjmRootMotion, parseXjModel, type PsoNjmRootMotion } from "./PsoXjModel";
 import {
     FALLBACK_PROCEDURAL_GAME_PACK,
     loadCompiledGamePack,
@@ -1680,6 +1684,78 @@ function applySegaNinjaMotion(
     }
 }
 
+interface PsoTechXjAsset {
+    /** One geometry per texture; each carries just that texture so the shader can wrap its UVs. */
+    parts: CustomMeshGeometry[];
+    motion: PsoNjmRootMotion | null;
+}
+
+function buildTechXjAsset(
+    xjBuf: ArrayBuffer,
+    xvmBuf: ArrayBuffer | null,
+    motionBuf: ArrayBuffer | null,
+    label: string,
+): PsoTechXjAsset | null {
+    const model = parseXjModel(xjBuf);
+    if (!model) return null;
+    const cell = 64;
+    const atlas = parsePsoXvmAtlas(xvmBuf, cell, 16);
+    const parts = model.groups.map((group): CustomMeshGeometry => {
+        const vertexCount = group.positions.length / 3;
+        let pixels: Uint8Array | undefined;
+        if (atlas && group.textureId < atlas.texCount) {
+            pixels = new Uint8Array(cell * cell * 4);
+            const cellX = (group.textureId % atlas.cols) * cell;
+            const cellY = Math.floor(group.textureId / atlas.cols) * cell;
+            for (let row = 0; row < cell; row++) {
+                const src = ((cellY + row) * atlas.width + cellX) * 4;
+                pixels.set(atlas.pixels.subarray(src, src + cell * 4), row * cell * 4);
+            }
+        }
+        return {
+            name: `${label} (texture ${group.textureId})`,
+            format: "NJ (Sega Ninja)",
+            positions: Float32Array.from(group.positions, (v) => v * PSO_TECH_XJ_WORLD_SCALE),
+            normals: new Float32Array(group.normals),
+            colors: new Float32Array(vertexCount * 3).fill(1),
+            uvs: pixels ? new Float32Array(group.uvs) : new Float32Array(vertexCount * 2).fill(-1),
+            vertexCount,
+            chunkInfo: `${vertexCount / 3} technique triangles`,
+            atlasPixels: pixels,
+            atlasWidth: pixels ? cell : undefined,
+            atlasHeight: pixels ? cell : undefined,
+        };
+    });
+    return { parts, motion: motionBuf ? parseNjmRootMotion(motionBuf) : null };
+}
+
+/** Column-major model matrix for a technique mesh's own motion pose (positions in Ninja units). */
+function techMotionMatrix(motion: PsoNjmRootMotion, frame: number): Float32Array {
+    const pose = motion.sample(frame);
+    const m = ninjaObjectMatrix(
+        [pose.position[0] * PSO_TECH_XJ_WORLD_SCALE, pose.position[1] * PSO_TECH_XJ_WORLD_SCALE, pose.position[2] * PSO_TECH_XJ_WORLD_SCALE],
+        pose.rotation,
+        pose.scale,
+    );
+    const out = new Float32Array(16);
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 4; col++) out[col * 4 + row] = m[row * 4 + col];
+    }
+    return out;
+}
+
+function mat4MulColumnMajor(a: Float32Array, b: Float32Array): Float32Array {
+    const out = new Float32Array(16);
+    for (let col = 0; col < 4; col++) {
+        for (let row = 0; row < 4; row++) {
+            let s = 0;
+            for (let k = 0; k < 4; k++) s += a[k * 4 + row] * b[col * 4 + k];
+            out[col * 4 + row] = s;
+        }
+    }
+    return out;
+}
+
 /**
  * Parses a standalone PSOBB `.xj` model file (e.g. `obj_warp_big.xj`, `obj_shopdoor.xj`, `obj_elv_alcove.xj`)
  * where offsets inside the `NJCM` chunk are relative to `base = 8`.
@@ -2306,6 +2382,8 @@ export function PsoLobby3dLayer({
     const loadedNpcMeshesRef = useRef<Partial<Record<PsoNpcModelId, CustomMeshGeometry>>>({});
     const loadedMotionsRef = useRef<Record<string, { buf: ArrayBuffer; nbFrame: number }>>({});
     const loadedPhotonChairRef = useRef<CustomMeshGeometry | null>(null);
+    const loadedTechXjRef = useRef<Partial<Record<PsoTechXjKey, PsoTechXjAsset>>>({});
+    const techXjAvailableRef = useRef<Set<PsoTechXjKey>>(new Set());
     const loadedCityObjectsRef = useRef<
         Partial<
             Record<
@@ -2686,6 +2764,36 @@ export function PsoLobby3dLayer({
             cancelled = true;
         };
     }, [gamePack]);
+
+    // Technique effect meshes, textures and motions (`media/pso/tech/`, extracted from `bm_technic.bml` / `bm_tec_regurar.bml`)
+    useEffect(() => {
+        let cancelled = false;
+        const fetchBuf = async (file: string): Promise<ArrayBuffer | null> => {
+            const res = await fetch(`media/pso/tech/${file}`).catch(() => null);
+            return res && res.ok ? res.arrayBuffer() : null;
+        };
+        const textures = new Map<string, Promise<ArrayBuffer | null>>();
+        void Promise.all(
+            (Object.entries(PSO_TECH_XJ_ASSETS) as Array<[PsoTechXjKey, (typeof PSO_TECH_XJ_ASSETS)[PsoTechXjKey]]>).map(
+                async ([key, files]) => {
+                    if (!textures.has(files.texture)) textures.set(files.texture, fetchBuf(files.texture));
+                    const [xjBuf, xvmBuf, motionBuf] = await Promise.all([
+                        fetchBuf(files.model),
+                        textures.get(files.texture)!,
+                        files.motion ? fetchBuf(files.motion) : Promise.resolve(null),
+                    ]);
+                    if (cancelled || !xjBuf) return;
+                    const asset = buildTechXjAsset(xjBuf, xvmBuf, motionBuf, files.model);
+                    if (!asset) return;
+                    loadedTechXjRef.current[key] = asset;
+                    techXjAvailableRef.current.add(key);
+                },
+            ),
+        );
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const [hudLabels, setHudLabels] = useState<
         Array<{
@@ -3523,8 +3631,16 @@ export function PsoLobby3dLayer({
             uniform float uAlpha;
             uniform float uHasAtlas;
             uniform sampler2D uAtlasTex;
+            uniform float uUnlit;
 
             void main() {
+                if (uUnlit > 0.5) {
+                    // Technique effects: one texture per mesh, so UVs can repeat; additive blend makes black transparent.
+                    vec3 fxColor = vCol * uTint;
+                    if (uHasAtlas > 0.5) fxColor *= texture2D(uAtlasTex, fract(vUv)).rgb;
+                    gl_FragColor = vec4(fxColor, uAlpha);
+                    return;
+                }
                 vec3 N = normalize(vNorm);
                 vec3 L = normalize(vec3(0.45, 0.85, 0.52));
                 vec3 V = normalize(vec3(0.0, 5.5, 10.0) - vWorldPos);
@@ -3597,6 +3713,8 @@ export function PsoLobby3dLayer({
         const uAlpha = gl.getUniformLocation(prog, "uAlpha");
         const uHasAtlas = gl.getUniformLocation(prog, "uHasAtlas");
         const uAtlasTex = gl.getUniformLocation(prog, "uAtlasTex");
+        const uUnlit = gl.getUniformLocation(prog, "uUnlit");
+        gl.uniform1f(uUnlit, 0.0);
 
         const builtins = buildBuiltinGeometries();
         const techMeshes = buildTechEffectMeshes();
@@ -4362,11 +4480,23 @@ export function PsoLobby3dLayer({
             if (sim.techEffects.length > 0) {
                 gl.depthMask(false);
                 gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+                gl.uniform1f(uUnlit, 1.0);
                 for (const fx of sim.techEffects) {
-                    for (const c of sampleTechEffect(fx, now)) {
-                        drawMesh(techMeshes[c.mesh], mat4TRS(c.x, c.y, c.z, c.yaw, c.pitch, c.sx, c.sy, c.sz), c.tint, c.alpha);
+                    for (const c of sampleTechEffect(fx, now, techXjAvailableRef.current)) {
+                        let modelMat = mat4TRS(c.x, c.y, c.z, c.yaw, c.pitch, c.sx, c.sy, c.sz);
+                        if (c.mesh.startsWith("xj_")) {
+                            const asset = loadedTechXjRef.current[c.mesh as PsoTechXjKey];
+                            if (!asset) continue;
+                            if (asset.motion && c.motionFrame !== undefined) {
+                                modelMat = mat4MulColumnMajor(modelMat, techMotionMatrix(asset.motion, c.motionFrame));
+                            }
+                            for (const part of asset.parts) drawMesh(part, modelMat, c.tint, c.alpha);
+                        } else {
+                            drawMesh(techMeshes[c.mesh as keyof typeof techMeshes], modelMat, c.tint, c.alpha);
+                        }
                     }
                 }
+                gl.uniform1f(uUnlit, 0.0);
                 gl.depthMask(true);
                 gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             }

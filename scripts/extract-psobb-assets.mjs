@@ -228,6 +228,10 @@ function getGslFile(gslBuf, gslMap, filename) {
 
 function parseBmlEntries(bmlBuf) {
     const count = bmlBuf.readUInt32LE(4);
+    // Header flag 0x100 (e.g. 0x150) packs entries on 0x20 boundaries; without it (e.g. 0x50, bm_technic.bml)
+    // every entry starts on a 0x800 sector boundary.
+    const entryAlign = bmlBuf.readUInt32LE(8) & 0x100 ? 0x20 : 0x800;
+    const alignUp = (v) => Math.ceil(v / entryAlign) * entryAlign;
     let dataOff = 0x40 + count * 0x40;
     if (dataOff % 0x800 !== 0) {
         dataOff = Math.ceil(dataOff / 0x800) * 0x800;
@@ -246,19 +250,13 @@ function parseBmlEntries(bmlBuf) {
 
         const rawMain = bmlBuf.slice(dataOff, dataOff + cSize);
         const mainDec = prsDecompress(rawMain);
-        dataOff += cSize;
-        if (dataOff % 0x20 !== 0) {
-            dataOff = Math.ceil(dataOff / 0x20) * 0x20;
-        }
+        dataOff = alignUp(dataOff + cSize);
 
         let extraDec = null;
         if (pvmCSize > 0 && dataOff + pvmCSize <= bmlBuf.length) {
             const rawExtra = bmlBuf.slice(dataOff, dataOff + pvmCSize);
             extraDec = prsDecompress(rawExtra);
-            dataOff += pvmCSize;
-            if (dataOff % 0x20 !== 0) {
-                dataOff = Math.ceil(dataOff / 0x20) * 0x20;
-            }
+            dataOff = alignUp(dataOff + pvmCSize);
         }
 
         entries.push({ name, cSize, uSize, pvmCSize, pvmUSize, mainDec, extraDec });
@@ -669,6 +667,21 @@ function main() {
                 writeAsset("scene", outName, entry.mainDec);
             }
         }
+    }
+
+    // J2. Technique effect meshes (.xj), their motions (.njm) and textures from bm_technic.bml / bm_tec_regurar.bml
+    fs.mkdirSync(path.join(outDir, "tech"), { recursive: true });
+    for (const bmlName of ["bm_technic.bml", "bm_tec_regurar.bml"]) {
+        const bmlBuf = getGslFile(gslBuf, gslMap, bmlName);
+        if (!bmlBuf) continue;
+        for (const entry of parseBmlEntries(bmlBuf)) {
+            const magic = entry.mainDec ? entry.mainDec.slice(0, 4).toString("ascii") : "";
+            if (magic === "NJCM" || magic === "NMDM") writeAsset("tech", entry.name.toLowerCase(), entry.mainDec);
+        }
+    }
+    for (const xvmName of ["technic.xvm", "tecregular.xvm"]) {
+        const xvmBuf = getGslFile(gslBuf, gslMap, xvmName);
+        if (xvmBuf && xvmBuf.slice(0, 4).toString("ascii") === "XVMH") writeAsset("tech", xvmName, xvmBuf);
     }
 
     // K. Direct & PRS-Compressed PSOBB UI Texture Atlases (`ui/*.xvm`)
