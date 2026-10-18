@@ -1,117 +1,113 @@
-[![Chat](https://img.shields.io/matrix/element-web:matrix.org?logo=matrix)](https://matrix.to/#/#element-web:matrix.org)
-![Tests](https://github.com/element-hq/element-web/actions/workflows/tests.yaml/badge.svg)
-![Static Analysis](https://github.com/element-hq/element-web/actions/workflows/static_analysis.yaml/badge.svg)
-[![Localazy](https://img.shields.io/endpoint?url=https%3A%2F%2Fconnect.localazy.com%2Fstatus%2Felement-web%2Fdata%3Fcontent%3Dall%26title%3Dlocalazy%26logo%3Dtrue)](https://localazy.com/p/element-web)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=element-web&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=element-web)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=element-web&metric=coverage)](https://sonarcloud.io/summary/new_code?id=element-web)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=element-web&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=element-web)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=element-web&metric=bugs)](https://sonarcloud.io/summary/new_code?id=element-web)
+# Element // Pioneer 2 Comm-Link (PSOBB Edition)
 
-# Element
-
-Element (formerly known as Vector and Riot) is a Matrix web & desktop client built using the [Matrix
-JS SDK](https://github.com/matrix-org/matrix-js-sdk).
-
-# Supported Environments
-
-Element has several tiers of support for different environments:
-
-- Supported
-    - Definition:
-        - Issues **actively triaged**, regressions **block** the release
-    - Last 2 major versions of Chrome, Firefox, and Edge on desktop OSes
-    - Last 2 versions of Safari
-    - Latest release of official Element Desktop app on desktop OSes
-    - Desktop OSes means macOS, Windows, and Linux versions for desktop devices
-      that are actively supported by the OS vendor and receive security updates
-- Best effort
-    - Definition:
-        - Issues **accepted**, regressions **do not block** the release
-        - The wider Element Products (including Element Call and the Enterprise Server Suite) do still not officially support these browsers.
-        - The element web project and its contributors should keep the client functioning and gracefully degrade where other sibling features (E.g. Element Call) may not function.
-    - Last major release of Firefox ESR and Chrome/Edge Extended Stable
-- Community Supported
-    - Definition:
-        - Issues **accepted**, regressions **do not block** the release
-        - Community contributions are welcome to support these issues
-    - Mobile web for current stable version of Chrome, Firefox, and Safari on Android, iOS, and iPadOS
-- Not supported
-    - Definition: Issues only affecting unsupported environments are **closed**
-    - Everything else
-
-The period of support for these tiers should last until the releases specified above, plus 1 app release cycle(2 weeks). In the case of Firefox ESR this is extended further to allow it land in Debian Stable.
-
-For accessing Element on an Android or iOS device, we currently recommend the
-native apps [element-x-android](https://github.com/element-hq/element-x-android)
-and [element-x-ios](https://github.com/element-hq/element-x-ios).
-
-# Getting Started
-
-The easiest way to test Element is to just use the hosted copy at <https://app.element.io>.
-The `develop` branch is continuously deployed to <https://develop.element.io>
-for those who like living dangerously.
-
-To host your own instance of Element see [Installing Element Web](docs/install.md).
-
-To install Element as a desktop application, see [Running as a desktop app](#running-as-a-desktop-app) below.
+A custom fork of **Element Classic (Web + Electron Desktop)** transformed into a **Phantasy Star Online: Blue Burst (PSOBB) Episode I, II & IV** communication suite, 3D social hub, and transparent gaming overlay for Matrix + LiveKit (`Element Call`).
 
 ---
 
-# Monorepo
+## What Makes This Fork Different from Standard Element
 
-This repository is a monorepo hosting Element Web and other related projects in various subdirectories.
-You can read more about the structure [here](docs/monorepo.md).
+### 1. Authentic PSOBB Episode IV HUD, Glass Theme & CRT Scanlines
+- **Cyan/Teal & Amber Glass UI (`_PsoTheme.pcss`)**: Replaces the standard Element flat theme with translucent Pioneer 2 glass panels, scanlines, Swatch `.beat` Internet Time readout, and orbital Ragol/Pioneer 2 or custom wallpaper backdrops.
+- **Frameless Desktop Window & OS Click-Through Glass (`Alt+G`)**: Includes custom aero snap zones, always-on-top pinning, and smart hit-tested click-through glass that lets mouse and keyboard input pass directly through to games running behind Element while keeping the chat composer and HUD buttons interactive.
+- **Compact Text-Only Chat Mode (`Alt+C`)**: Collapses the app into a floating bottom-right PSO chatbox with an optional **Text-Only Hide Bar & Overlays** toggle (`💬`) and a bottom-right restore dock (`▲ RESTORE TITLE BAR & OVERLAYS` / `⤢ RESTORE FULL APP`).
+- **Episode IV Top-Left Hunter & Party Voice HUD**: Shows your live Matrix homeserver ping (`HP` bar), live WebAudio microphone dB meter (`TP` bar), `Shifta`/`Deband` peaking & noise-shield indicators, and stacked party member plates inside the 3D Lobby, Compact Chat, or Stream Overlay mode (`Alt+O`).
+- **1–0 Hexagonal Action Palette & Draggable 4-Hex Diamond Cluster**: Customizable bottom quickbar (`Alt+1`..`Alt+0`) for instant mic mute, deafen, screen share, Symbol Chat, 3D Lobby toggle, and technique alerts (`Resta`, `Shifta`, `Deband`).
 
-# Element Web
+### 2. Interactive PSOBB Symbol Chat Maker & Synthesizer
+- **Authentic Multi-Layer Symbol Chat Editor (`PsoSymbolChatMaker.tsx`)**: Build, layer, color, and save up to **30** custom Symbol Chat presets (including imported PNG sprite sheets) with authentic 4-choice sound chimes and floating parallelogram speech balloons.
+- **Live Matrix Broadcast**: Transmits Symbol Chats across Matrix rooms (with optional auto-redaction or persistent chat log fallback) and displays them as 3D overhead balloons above your character in the lobby.
 
-To learn more about Element Web [click here](apps/web/README.md)
+### 3. Embedded 3D WebGL Visual Lobby & Pioneer 2 Hub (`PsoLobby3dLayer.tsx`)
+- **Native Sega Ninja (`.nj` / `.xj`), Texture (`.xvm`), Stage (`.rel` / `.dat`), and 64-Bone Skeletal Animation (`.njm`) Engine**:
+  - Parses and renders authentic PSOBB character classes (`HUmar`, `HUnewearl`, `HUcast`, `HUcaseal`, `RAmar`, `RAmarl`, `RAcast`, `RAcaseal`, `FOmar`, `FOmarl`, `FOnewm`, `FOnewearl`), 22 Pioneer 2 NPCs, 3D Photon Chairs, and multi-stage environments (Visual Lobby, Pioneer 2 City, Principal's Office, Lab, Forest 1, Cave 1, Mine 1, Ruins 1, Temple, Spaceship).
+  - Full 64-bone hierarchical skeletal animation (`NMDM`) with walk/run cycles, 3-step melee combos, casting, sitting in Photon Chairs, and lobby emotes (`Wave`, `Cheer`, `Dance`, `Bow`).
+  - Built-in **WebGL Post-Processing / ReShade Pipeline** (Bloom, CRT Scanlines, Chromatic Aberration, Vignette, Vibrance, Sharpen) and area BGM soundtrack player.
+- **Real-Time Multiplayer over Matrix (`<50ms` Ephemeral To-Device + Room State Sync)**:
+  - Fellow room and voice-call members appear live in the 3D world with smooth velocity dead-reckoning, overhead chat bubbles, Section ID badges, and inspectable **Hunter Guild Cards**.
+  - **Ghost Standby Mode (`👻`)**: Keeps your hologram Hunter resting at your saved coordinates in the 3D Lobby and relays your chat messages as 3D speech bubbles even when you close the 3D viewport to save GPU.
+- **Pioneer 2 Hunter's Guild Counter**: Walk up to the Guild Counter, Medical Center, Shops, Bank, or Teleporter in Pioneer 2 to switch Matrix rooms ("Ship Blocks"), toggle voice comms, or warp between Ragol stages.
 
-# Running as a Desktop app
+### 4. Split Chat + Collapsible Element Call Voice/Video Dock
+- **Side-by-Side Timeline & LiveKit Call View**: Joining a voice/video call keeps the room text timeline open alongside a resizable, collapsible right-hand call pane (`❯ HIDE` / `❮ CALL` or top-right `📹` header button).
+- **Persistent Bottom-Left Voice Dock (`UserVoiceDock.tsx`)**: Quick mute, deafen, screen-share, and per-user volume controls right from the room list sidebar.
+- **Native Desktop Screen / Window Picker + Global Hotkeys**: Custom Electron IPC picker for sharing individual windows or screens with system audio, plus global `F9` (Mute) and `F10` (Deafen) shortcuts that work while gaming full-screen.
 
-Element can also be run as a desktop app, wrapped in Electron. You can download a
-pre-built version from <https://element.io/get-started> or, if you prefer,
-build it yourself.
+---
 
-To build it yourself, follow the instructions at <https://github.com/element-hq/element-web/tree/develop/apps/desktop>.
+## Clean-Room Bring-Your-Own-Assets (BYOA) Setup
 
-Many thanks to @aviraldg for the initial work on the Electron integration.
+To keep this repository 100% free of copyrighted Sega binary assets, the extracted `.nj`, `.xj`, `.xvm`, `.rel`, `.dat`, `.njm`, and `.ogg` files under `apps/web/res/media/pso/{chars,scene,ogg}/` are git-ignored.
 
-The [configuration docs](docs/config.md#desktop-app-configuration) show how to override the desktop app's default settings if desired.
+Instead, this repository includes a zero-dependency, cross-platform Node.js extractor (`scripts/extract-psobb-assets.mjs`) that unpacks all **198** required assets directly from your own local **Phantasy Star Online: Blue Burst** installation (`data/data.gsl`, `data/scene/`, `data/ogg/`, `data/pl*tex.afs`) in under 1 second on **Linux, macOS, and Windows**.
 
-# Development
+---
 
-Please read through the following:
+## Quick Start (Linux / macOS / Windows)
 
-1. [Developer guide](./developer_guide.md)
-2. [Code style](./code_style.md)
-3. [Contribution guide](./CONTRIBUTING.md)
+### Prerequisites
+- **Node.js** `>= 22.18`
+- **pnpm** (via Corepack or standalone install)
+- *(Optional, for 3D Lobby & BGM assets)* A local copy of a **PSOBB** client folder containing `data/data.gsl`
 
-# Translations
+### 1. Clone & Install Dependencies
 
-To add a new translation, head to the [translating doc](docs/translating.md).
+```bash
+git clone -b notification-sound-fixes https://github.com/cow2cowlinuxuser/element-web.git element-classic
+cd element-classic
+pnpm install
+```
 
-For a developer guide, see the [translating dev doc](docs/translating-dev.md).
+### 2. Extract PSOBB 3D Models, Animations, Stages & Audio
 
-# Triaging issues
+Point `--source` at your PSOBB installation directory (or its `data/` subfolder):
 
-Issues are triaged by community members and the Web App Team, following the [triage process](https://github.com/element-hq/element-meta/wiki/Triage-process).
+```bash
+pnpm run extract:psobb -- --source "/path/to/your/PSOBB"
+```
 
-We use [issue labels](https://github.com/element-hq/element-meta/wiki/Issue-labelling) to sort all incoming issues.
+*(This extracts all 198 files into `apps/web/res/media/pso/{chars,scene,ogg}/`.)*
 
-## Copyright & License
+### 3. Run or Package the Application
 
-Copyright (c) 2014-2017 OpenMarket Ltd
-Copyright (c) 2017 Vector Creations Ltd
-Copyright (c) 2017-2025 New Vector Ltd
+#### Option A: Run Web Dev Server
+```bash
+pnpm --filter element-web start
+```
 
-This software is multi licensed by New Vector Ltd (Element). It can be used either:
+#### Option B: Build & Package the Linux Electron Desktop App
+```bash
+pnpm run build:desktop:linux
 
-(1) for free under the terms of the GNU Affero General Public License (as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version); OR
+# Launch the unpacked Linux desktop app:
+./apps/desktop/dist/linux-unpacked/element-desktop
+```
 
-(2) for free under the terms of the GNU General Public License (as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version); OR
+#### Option C: Build & Package on Windows
+```bash
+pnpm --filter element-web build
+pnpm --filter element-desktop run build:ts
+pnpm --filter element-desktop exec electron-builder --win --dir
+```
 
-(3) under the terms of a paid-for Element Commercial License agreement between you and Element (the terms of which may vary depending on what you and Element have agreed to).
-Unless required by applicable law or agreed to in writing, software distributed under the Licenses is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the Licenses for the specific language governing permissions and limitations under the Licenses.
+---
 
-Please contact [licensing@element.io](mailto:licensing@element.io) to purchase
-an Element commercial license for this software.
+## Keyboard Shortcuts & HUD Controls
+
+| Shortcut / Control | Action |
+| --- | --- |
+| `Alt + 1` .. `Alt + 0` | Trigger equipped bottom Hex Action Palette slot `1`–`0` |
+| `Alt + C` | Toggle **Compact Floating Chat Mode** (with top-left Party HUD & bottom-right restore bar) |
+| `Alt + G` | Toggle **Click-Through Glass Mode** (pass mouse/keyboard through to game behind window) |
+| `Alt + O` | Toggle **Stream Overlay Mode** (pin HUD gauges & hex bar over transparent desktop) |
+| `F9` *(Desktop Global)* | Toggle Microphone Mute (works even when another game is focused) |
+| `F10` *(Desktop Global)* | Toggle Audio Deafen (works even when another game is focused) |
+| `🕹️` *(Title Bar)* | Open / Close **3D Pioneer 2 Visual Lobby** |
+| `👻` *(Title Bar)* | Toggle **Ghost Standby Avatar** while 3D Lobby is closed |
+| `🎨` *(Title Bar)* | Open **PSO Symbol Chat Maker** |
+| `💬` *(Title Bar)* | Hide Title Bar & HUD Overlays in Compact Chat (restore from bottom-right button) |
+
+---
+
+## Upstream License
+
+Based on [Element Web / Desktop](https://github.com/element-hq/element-web) by New Vector Ltd, licensed under `AGPL-3.0-only OR GPL-3.0-only`. See original license headers for full details.
