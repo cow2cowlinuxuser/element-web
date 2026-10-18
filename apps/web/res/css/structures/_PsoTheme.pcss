@@ -791,6 +791,11 @@ body.pso-stream-overlay-mode .mx_MatrixChat {
     gap: 8px;
 }
 
+.pso-ep4-party-hud-stack--in-lobby {
+    top: 96px;
+    left: 22px;
+}
+
 .pso-ep4-top-status {
     width: 274px;
     padding: 8px 12px 10px 12px;
@@ -2539,9 +2544,12 @@ body.pso-compact-chat-mode #mx_PersistedElement_container {
     display: none !important;
 }
 
-body.pso-stream-overlay-mode #mx_PersistedElement_container {
+body.pso-stream-overlay-mode #mx_PersistedElement_container,
+body:has(.mx_RoomView_callVoicePane--collapsed) #mx_PersistedElement_container {
     opacity: 0 !important;
     pointer-events: none !important;
+    width: 0 !important;
+    overflow: hidden !important;
 }
 
 /* ============================================================================
@@ -2625,9 +2633,63 @@ body.pso-compact-chat-mode:not(.pso-unified-guild-stage) .mx_RoomView_wrapper {
         0 12px 32px rgb(0, 0, 0, 0.78) !important;
 }
 
+body.pso-compact-chat-mode.pso-compact-overlays-hidden:not(.pso-unified-guild-stage) .mx_RoomView_wrapper {
+    bottom: 42px !important;
+    height: min(430px, calc(100vh - 58px)) !important;
+}
+
 body.pso-compact-chat-mode .mx_RoomHeader {
     min-height: 34px !important;
     padding: 4px 10px !important;
+}
+
+body.pso-compact-chat-mode.pso-compact-overlays-hidden .mx_RoomHeader {
+    display: none !important;
+}
+
+.pso-compact-restore-bar {
+    position: fixed;
+    right: 16px;
+    bottom: 72px;
+    z-index: 625;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pso-compact-restore-bar--hidden-overlays {
+    bottom: 8px;
+}
+
+.pso-compact-restore-btn {
+    padding: 4px 10px;
+    border-radius: 5px;
+    background: linear-gradient(180deg, rgb(12, 58, 68, 0.94) 0%, rgb(4, 22, 28, 0.96) 100%);
+    border: 1.5px solid var(--pso-fg-cyan-main);
+    color: var(--pso-fg-cyan-ice);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgb(0, 0, 0, 0.72);
+    transition:
+        background 0.14s ease,
+        border-color 0.14s ease,
+        color 0.14s ease;
+}
+
+.pso-compact-restore-btn:hover {
+    border-color: var(--pso-amber-bright);
+    color: #fff8e6;
+    background: linear-gradient(180deg, rgb(22, 78, 92, 0.98) 0%, rgb(8, 34, 42, 0.98) 100%);
+}
+
+.pso-compact-restore-btn--primary {
+    border-color: var(--pso-amber-bright);
+    color: var(--pso-amber-bright);
+    box-shadow:
+        0 4px 14px rgb(0, 0, 0, 0.78),
+        0 0 10px rgb(242, 198, 80, 0.28);
 }
 
 /* Hide all images, videos, stickers, link preview cards, and media frames in Compact Text-Only Mode */

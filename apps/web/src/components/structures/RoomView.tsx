@@ -297,6 +297,7 @@ export interface IRoomState {
      */
     roomSummary?: RoomSummary;
     promptAskToJoin: boolean;
+    callVoicePaneCollapsed?: boolean;
 }
 
 interface LocalRoomViewProps {
@@ -1048,6 +1049,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
 
         this.context.legacyCallHandler.on(LegacyCallHandlerEvent.CallState, this.onCallState);
         window.addEventListener("beforeunload", this.onPageUnload);
+        window.addEventListener("pso:toggle-call-voice-pane", this.onToggleCallVoicePaneCollapsed);
     }
 
     public shouldComponentUpdate(nextProps: IRoomProps, nextState: IRoomState): boolean {
@@ -1113,6 +1115,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         }
 
         window.removeEventListener("beforeunload", this.onPageUnload);
+        window.removeEventListener("pso:toggle-call-voice-pane", this.onToggleCallVoicePaneCollapsed);
 
         this.roomViewStore.off(UPDATE_EVENT, this.onRoomViewStoreUpdate);
 
@@ -2255,6 +2258,16 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         window.localStorage.setItem("mx_call_voice_pane_size", Math.max(220, width).toString());
     };
 
+    private onToggleCallVoicePaneCollapsed = (): void => {
+        this.setState(
+            (prev) => ({ callVoicePaneCollapsed: !prev.callVoicePaneCollapsed }),
+            () => {
+                this.context.resizeNotifier.notifyRightHandleResized();
+                defaultDispatcher.dispatch({ action: "timeline_resize" });
+            },
+        );
+    };
+
     public render(): ReactNode {
         if (!this.context.client) return null;
         const { isRoomEncrypted } = this.state;
@@ -2767,8 +2780,14 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                         </>
                     );
                 } else {
+                    const isVoicePaneCollapsed = Boolean(this.state.callVoicePaneCollapsed);
                     mainSplitBody = (
-                        <div className="mx_RoomView_callSplit" data-testid="room-call-split">
+                        <div
+                            className={classNames("mx_RoomView_callSplit", {
+                                "mx_RoomView_callSplit--voiceCollapsed": isVoicePaneCollapsed,
+                            })}
+                            data-testid="room-call-split"
+                        >
                             <div className="mx_RoomView_callChatPane" data-testid="room-call-chat-pane">
                                 <RoomUploadContextProvider>
                                     <Measured sensor={this.roomViewBody} onMeasurement={this.onMeasurement} />
@@ -2786,7 +2805,34 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                                     {messageComposer}
                                 </RoomUploadContextProvider>
                             </div>
-                            <div className="mx_RoomView_callVoicePane" data-testid="room-call-voice-pane">
+                            <button
+                                type="button"
+                                className={classNames("mx_RoomView_callVoicePane_collapseBtn", {
+                                    "mx_RoomView_callVoicePane_collapseBtn--collapsed": isVoicePaneCollapsed,
+                                })}
+                                onClick={this.onToggleCallVoicePaneCollapsed}
+                                title={
+                                    isVoicePaneCollapsed
+                                        ? "Expand Call Window"
+                                        : "Collapse Call Window"
+                                }
+                                aria-label={
+                                    isVoicePaneCollapsed
+                                        ? "Expand Call Window"
+                                        : "Collapse Call Window"
+                                }
+                                data-testid="room-call-voice-pane-collapse-btn"
+                            >
+                                <span className="mx_RoomView_callVoicePane_collapseGlyph">
+                                    {isVoicePaneCollapsed ? "❮ CALL" : "❯"}
+                                </span>
+                            </button>
+                            <div
+                                className={classNames("mx_RoomView_callVoicePane", {
+                                    "mx_RoomView_callVoicePane--collapsed": isVoicePaneCollapsed,
+                                })}
+                                data-testid="room-call-voice-pane"
+                            >
                                 <Resizable
                                     defaultSize={this.loadCallVoicePaneSize()}
                                     minWidth={220}

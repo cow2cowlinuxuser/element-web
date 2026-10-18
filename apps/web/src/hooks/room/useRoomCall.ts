@@ -355,13 +355,17 @@ export const useRoomCall = (
             videoCallDisabledReason = null;
     }
     const toggleCallMaximized = useCallback(() => {
+        if (isViewingCall && isConnectedToCall && document.querySelector(".mx_RoomView_callSplit")) {
+            window.dispatchEvent(new CustomEvent("pso:toggle-call-voice-pane"));
+            return;
+        }
         defaultDispatcher.dispatch<ViewRoomPayload>({
             action: Action.ViewRoom,
             room_id: room.roomId,
             metricsTrigger: undefined,
             view_call: !isViewingCall,
         });
-    }, [isViewingCall, room.roomId]);
+    }, [isViewingCall, isConnectedToCall, room.roomId]);
 
     const roomDoesNotExist = room instanceof LocalRoom && room.state !== LocalRoomState.CREATED;
 

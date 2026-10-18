@@ -60,6 +60,7 @@ const STORAGE_KEYS = {
     DIAMOND_POS: "pso_hud_diamond_cluster_pos",
     POST_SYMBOL_TEXT_LOG: "pso_hud_post_symbol_text_log",
     COMPACT_CHAT: "pso_hud_compact_chat_mode",
+    COMPACT_OVERLAYS_HIDDEN: "pso_hud_compact_overlays_hidden",
     CLICK_THROUGH: "pso_hud_click_through_glass",
     PIN_ALWAYS_ON_TOP: "pso_hud_pin_always_on_top",
     HEX_SLOTS: "pso_hud_hex_action_slots",
@@ -500,6 +501,13 @@ export function PsoHudOverlay(): JSX.Element {
             return false;
         }
     });
+    const [isCompactOverlaysHidden, setIsCompactOverlaysHidden] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(STORAGE_KEYS.COMPACT_OVERLAYS_HIDDEN) === "true";
+        } catch {
+            return false;
+        }
+    });
     const [isClickThroughGlass, setIsClickThroughGlass] = useState<boolean>(() => {
         try {
             return localStorage.getItem(STORAGE_KEYS.CLICK_THROUGH) === "true";
@@ -849,6 +857,7 @@ export function PsoHudOverlay(): JSX.Element {
         document.body.classList.add("pso-hud-theme");
         document.body.classList.toggle("pso-stream-overlay-mode", isStreamOverlay);
         document.body.classList.toggle("pso-compact-chat-mode", isCompactChat);
+        document.body.classList.toggle("pso-compact-overlays-hidden", isCompactChat && isCompactOverlaysHidden);
         document.body.classList.toggle("pso-click-through-glass", isClickThroughGlass);
         document.body.classList.toggle(
             "pso-unified-guild-stage",
@@ -876,6 +885,7 @@ export function PsoHudOverlay(): JSX.Element {
             localStorage.setItem(STORAGE_KEYS.SCANLINE_ALPHA, String(scanlineAlpha));
             localStorage.setItem(STORAGE_KEYS.BACKDROP_MODE, backdropMode);
             localStorage.setItem(STORAGE_KEYS.COMPACT_CHAT, String(isCompactChat));
+            localStorage.setItem(STORAGE_KEYS.COMPACT_OVERLAYS_HIDDEN, String(isCompactOverlaysHidden));
             localStorage.setItem(STORAGE_KEYS.CLICK_THROUGH, String(isClickThroughGlass));
             localStorage.setItem(STORAGE_KEYS.PIN_ALWAYS_ON_TOP, String(pinAlwaysOnTop));
             localStorage.setItem(STORAGE_KEYS.HEX_SLOTS, JSON.stringify(hexSlots));
@@ -890,6 +900,7 @@ export function PsoHudOverlay(): JSX.Element {
         backdropMode,
         isStreamOverlay,
         isCompactChat,
+        isCompactOverlaysHidden,
         isClickThroughGlass,
         pinAlwaysOnTop,
         hexSlots,
@@ -1574,6 +1585,9 @@ export function PsoHudOverlay(): JSX.Element {
                         if (next && isStreamOverlay) {
                             setIsStreamOverlay(false);
                         }
+                        if (!next) {
+                            setIsCompactOverlaysHidden(false);
+                        }
                         if (next) {
                             window.setTimeout(() => sendElectronIpc("psoReleaseFocusToBackground"), 40);
                         }
@@ -2010,7 +2024,7 @@ export function PsoHudOverlay(): JSX.Element {
             )}
 
             {/* FRAMELESS WINDOW DRAG TITLEBAR + SNAP / CLICK-THRU / WINDOW CONTROLS + RESIZE EDGES */}
-            {!isStreamOverlay && (
+            {!isStreamOverlay && !(isCompactChat && isCompactOverlaysHidden) && (
                 <>
                     <div
                         className="pso-window-titlebar pso-interactive"
@@ -2040,8 +2054,38 @@ export function PsoHudOverlay(): JSX.Element {
                                     🖱️ CLICK-THRU ACTIVE (Alt+G)
                                 </button>
                             )}
+                            {isCompactChat && (
+                                <button
+                                    type="button"
+                                    className="pso-window-titlebar-badge pso-window-titlebar-badge--active"
+                                    onClick={() => setIsCompactOverlaysHidden(true)}
+                                    title="Hide top title bar & all HUD overlays — show only compact chat text"
+                                    data-testid="pso-compact-hide-overlays-btn"
+                                >
+                                    💬 HIDE BAR &amp; OVERLAYS
+                                </button>
+                            )}
                         </div>
                         <div className="pso-window-titlebar-actions">
+                            <button
+                                type="button"
+                                className={classNames("pso-window-ctrl-btn", {
+                                    "pso-window-ctrl-btn--active": isCompactChat && isCompactOverlaysHidden,
+                                })}
+                                onClick={() => {
+                                    if (!isCompactChat) {
+                                        setIsCompactChat(true);
+                                        setIsCompactOverlaysHidden(true);
+                                    } else {
+                                        setIsCompactOverlaysHidden((prev) => !prev);
+                                    }
+                                }}
+                                title="Compact Chat Text-Only Mode — Hide Title Bar & Overlays"
+                                aria-label="Hide Title Bar and Overlays in Compact Chat"
+                                data-testid="pso-titlebar-hide-overlays-action"
+                            >
+                                💬
+                            </button>
                             <button
                                 type="button"
                                 className={classNames("pso-window-ctrl-btn", {
@@ -2153,10 +2197,12 @@ export function PsoHudOverlay(): JSX.Element {
                 </>
             )}
 
-            {/* 2. TOP-LEFT PSO EPISODE IV PLAYER GAUGE + COMPACT PARTY VOICE STACK (Visible in Compact Chat, Stream Overlay, or Active Voice Call) */}
-            {(isStreamOverlay || isCompactChat || Boolean(activeCall)) && (
+            {/* 2. TOP-LEFT PSO EPISODE IV PLAYER GAUGE + COMPACT PARTY VOICE STACK (Visible only in 3D Game, Compact Chat, or Stream Overlay) */}
+            {(isStreamOverlay || isCompactChat || isLobby3dOpen) && !(isCompactChat && isCompactOverlaysHidden) && (
                 <div
-                    className="pso-ep4-party-hud-stack pso-interactive"
+                    className={classNames("pso-ep4-party-hud-stack pso-interactive", {
+                        "pso-ep4-party-hud-stack--in-lobby": isLobby3dOpen && !isCompactChat && !isStreamOverlay,
+                    })}
                     data-testid="pso-status-hud"
                     onMouseEnter={onHudMouseEnter}
                     onMouseLeave={onHudMouseLeave}
@@ -2179,7 +2225,10 @@ export function PsoHudOverlay(): JSX.Element {
                                     className="pso-orb-btn pso-orb-btn--b"
                                     onClick={() => {
                                         if (isStreamOverlay) setIsStreamOverlay(false);
-                                        else if (isCompactChat) setIsCompactChat(false);
+                                        else if (isCompactChat) {
+                                            setIsCompactOverlaysHidden(false);
+                                            setIsCompactChat(false);
+                                        } else if (isLobby3dOpen) setIsLobby3dOpen(false);
                                     }}
                                     title="Exit Overlay / Compact Mode"
                                 >
@@ -2959,7 +3008,53 @@ export function PsoHudOverlay(): JSX.Element {
                 </>
             )}
 
+            {/* 5B. BOTTOM-RIGHT RESTORE / OVERLAY TOGGLE BAR DIRECTLY BELOW THE FOCUSED COMPACT CHAT */}
+            {isCompactChat && (
+                <div
+                    className={classNames("pso-compact-restore-bar pso-interactive", {
+                        "pso-compact-restore-bar--hidden-overlays": isCompactOverlaysHidden,
+                    })}
+                    data-testid="pso-compact-restore-bar"
+                    onMouseEnter={onHudMouseEnter}
+                    onMouseLeave={onHudMouseLeave}
+                >
+                    {isCompactOverlaysHidden ? (
+                        <button
+                            type="button"
+                            className="pso-compact-restore-btn pso-compact-restore-btn--primary"
+                            onClick={() => setIsCompactOverlaysHidden(false)}
+                            title="Restore top title bar, player overlay, and hexagonal HUD controls"
+                            data-testid="pso-compact-restore-overlays-btn"
+                        >
+                            ▲ RESTORE TITLE BAR &amp; OVERLAYS
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="pso-compact-restore-btn"
+                            onClick={() => setIsCompactOverlaysHidden(true)}
+                            title="Hide top title bar & overlays — keep only chat text"
+                        >
+                            ▼ HIDE TITLE BAR &amp; OVERLAYS
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className="pso-compact-restore-btn"
+                        onClick={() => {
+                            setIsCompactOverlaysHidden(false);
+                            setIsCompactChat(false);
+                        }}
+                        title="Exit Compact Chat and restore full Element window (Alt+C)"
+                        data-testid="pso-compact-exit-btn"
+                    >
+                        ⤢ RESTORE FULL APP
+                    </button>
+                </div>
+            )}
+
             {/* 6. BOTTOM EPISODE IV DYNAMIC-WIDTH HEXAGONAL ACTION PALETTE + 4-HEX CLUSTER + @BEAT TIME */}
+            {!(isCompactChat && isCompactOverlaysHidden) && (
             <div
                 className="pso-hex-bar-wrap pso-interactive"
                 data-testid="pso-hex-quickbar"
@@ -3200,6 +3295,7 @@ export function PsoHudOverlay(): JSX.Element {
                     </div>
                 </div>
             </div>
+            )}
         </div>
     );
 

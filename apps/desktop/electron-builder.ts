@@ -204,9 +204,31 @@ const config: Omit<Writable<Configuration>, "electronFuses"> & {
     nodeGypRebuild: false,
     npmRebuild: true,
     beforeBuild: async (context: BeforeBuildContext) => {
+        const asarPath = path.join(context.appDir, "webapp.asar");
+        const localWebAppDir = path.resolve(context.appDir, "../web/webapp");
+        if (fs.existsSync(localWebAppDir)) {
+            const webappConfigPath = path.join(localWebAppDir, "config.json");
+            if (!fs.existsSync(webappConfigPath)) {
+                const candidateConfigs = [
+                    path.resolve(context.appDir, "../web/config.json"),
+                    path.resolve(context.appDir, "../web/element.io/app/config.json"),
+                    path.resolve(context.appDir, "../web/config.sample.json"),
+                ];
+                for (const candidate of candidateConfigs) {
+                    if (fs.existsSync(candidate)) {
+                        await fsp.copyFile(candidate, webappConfigPath);
+                        console.log(`Copied default config from ${candidate} to ${webappConfigPath}`);
+                        break;
+                    }
+                }
+            }
+            const { createPackage } = await import("@electron/asar");
+            console.log(`Auto-packing ${localWebAppDir} into ${asarPath}...`);
+            await createPackage(localWebAppDir, asarPath);
+        }
         // Assert that the webapp.asar file exists
         try {
-            await fsp.access(path.join(context.appDir, "webapp.asar"), fs.constants.F_OK);
+            await fsp.access(asarPath, fs.constants.F_OK);
         } catch (err) {
             console.error("The webapp.asar archive is missing. Building without a webapp is fruitless.");
             console.log(

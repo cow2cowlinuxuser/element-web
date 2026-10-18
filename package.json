@@ -28,7 +28,8 @@
         "docs:preview": "vitepress preview docs",
         "test:unit": "nx run-many -t test:unit:prepare -p && vitest run",
         "coverage:diff": "diff-cover --config-file diff-cover.toml apps/web/coverage/lcov.info packages/shared-components/coverage/lcov.info coverage/lcov.info",
-        "extract:psobb": "node scripts/extract-psobb-assets.mjs"
+        "extract:psobb": "node scripts/extract-psobb-assets.mjs",
+        "build:desktop:linux": "pnpm --filter element-web build && pnpm --filter element-desktop run build:ts && pnpm --filter element-desktop exec electron-builder --linux --dir"
     },
     "devDependencies": {
         "@action-validator/cli": "^0.6.0",
@@ -62,13 +63,6 @@
     },
     "engines": {
         "node": ">=22.18"
-    },
-    "devEngines": {
-        "packageManager": {
-            "name": "pnpm",
-            "version": "12.11.2",
-            "onFail": "download"
-        }
     },
     "private": true,
     "nx": {}

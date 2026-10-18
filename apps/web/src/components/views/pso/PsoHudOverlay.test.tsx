@@ -43,7 +43,7 @@ describe("PsoHudOverlay", () => {
         // Clicking hex slot 1 triggers the Shichimiya Rappy Symbol Chat popup
         await userEvent.click(screen.getByTestId("pso-hex-slot-1"));
         expect(screen.getByTestId("pso-symbol-chat-toast")).toBeInTheDocument();
-        expect(screen.getByText("Shichimiya")).toBeInTheDocument();
+        expect(screen.getByText(/Shichimiya/i)).toBeInTheDocument();
     });
 
     it("toggles Episode IV Stream Overlay mode and reveals the compact top-left Hunter Status HUD", async () => {
@@ -55,8 +55,31 @@ describe("PsoHudOverlay", () => {
         await userEvent.click(screen.getByTestId("pso-stream-overlay-toggle"));
         expect(document.body).toHaveClass("pso-stream-overlay-mode");
         expect(screen.getByTestId("pso-status-hud")).toBeInTheDocument();
-        expect(screen.getByText("1345/1345")).toBeInTheDocument();
-        expect(screen.getByText("2698/2927")).toBeInTheDocument();
+        expect(screen.getByText("PING")).toBeInTheDocument();
+        expect(screen.getByText("VOICE")).toBeInTheDocument();
+    });
+
+    it("shows the top-left player overlay in compact chat and allows hiding and restoring title bar and overlays", async () => {
+        const PsoHudOverlay = wrapInSdkContext(UnwrappedPsoHudOverlay, sdkContext);
+        render(<PsoHudOverlay />);
+
+        expect(screen.queryByTestId("pso-status-hud")).toBeNull();
+
+        await userEvent.click(screen.getByTestId("pso-compact-chat-toggle"));
+        expect(document.body).toHaveClass("pso-compact-chat-mode");
+        expect(screen.getByTestId("pso-status-hud")).toBeInTheDocument();
+
+        // Hide top title bar and overlays via title bar button
+        await userEvent.click(screen.getByTestId("pso-compact-hide-overlays-btn"));
+        expect(document.body).toHaveClass("pso-compact-overlays-hidden");
+        expect(screen.queryByTestId("pso-status-hud")).toBeNull();
+        expect(screen.queryByTestId("pso-hex-quickbar")).toBeNull();
+
+        // Restore all compacted elements via bottom-right restore button below focused chat
+        await userEvent.click(screen.getByTestId("pso-compact-restore-overlays-btn"));
+        expect(document.body).not.toHaveClass("pso-compact-overlays-hidden");
+        expect(screen.getByTestId("pso-status-hud")).toBeInTheDocument();
+        expect(screen.getByTestId("pso-hex-quickbar")).toBeInTheDocument();
     });
 
     it("opens the HUD & Wallpaper Tuner popover to adjust glass opacity and CRT scanlines", async () => {
