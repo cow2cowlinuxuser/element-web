@@ -13,6 +13,15 @@ import classNames from "classnames";
 
 import { playPsoSymbolChime, type PsoSymbolChatSpec } from "./PsoSymbolChatMaker";
 import {
+    buildTechEffectMeshes,
+    getTechSpec,
+    isAndroidClass,
+    isTechEffectAlive,
+    sampleTechEffect,
+    techCastDurationSec,
+    type PsoActiveTechEffect,
+} from "./PsoTechniqueEffects";
+import {
     FALLBACK_PROCEDURAL_GAME_PACK,
     loadCompiledGamePack,
     type PsoCompiledGamePack,
@@ -144,8 +153,10 @@ export interface PsoLobbyWorldAction {
     dmg?: number;
     emote?: PsoLobbyEmoteId;
     senderName?: string;
+    techName?: string;
     x?: number;
     z?: number;
+    yaw?: number;
     ts: number;
 }
 
@@ -289,8 +300,13 @@ interface PsoLobby3dLayerProps {
     onPersistHunterState?: (state: PsoPersistedHunterState) => void;
     /** Receives the 3D viewport element so HUD windows can be anchored inside the game view. */
     onViewportElementChange?: (el: HTMLDivElement | null) => void;
-    /** While true (e.g. the main menu is open) the lobby ignores keyboard input entirely. */
+    /**
+     * While true (the main menu is open) the menu owns arrows/Enter/Esc; WASD, camera and action keys still drive the hunter,
+     * and chat focus is handed back when the menu closes.
+     */
     isInputSuspended?: boolean;
+    /** Cast a technique as the local hunter (e.g. from the main menu). `nonce` makes repeat casts distinct. */
+    castTechniqueRequest?: { techName: string; nonce: number } | null;
     onClose: () => void;
     onMouseEnter?: () => void;
     onMouseLeave?: () => void;
@@ -2204,6 +2220,7 @@ export function PsoLobby3dLayer({
     onPersistHunterState,
     onViewportElementChange,
     isInputSuspended = false,
+    castTechniqueRequest,
     onClose,
     onMouseEnter,
     onMouseLeave,
@@ -2312,6 +2329,8 @@ export function PsoLobby3dLayer({
         attackTimer: 0,
         comboStep: 0,
         techBurstTimer: 0,
+        techCastTotal: 0.65,
+        techEffects: [] as PsoActiveTechEffect[],
         keys: new Set<string>(),
         boxes: [
             { id: "b1", x: -4.8, z: -3.2, rotY: 0.2, kind: "green_box", hp: 30, maxHp: 30, dropLoot: null, respawnAt: 0 },
@@ -2799,12 +2818,22 @@ export function PsoLobby3dLayer({
             }
         } else if (incomingWorldAction.kind === "tech_burst") {
             playPsoSymbolChime("rare");
+            const spec = getTechSpec(incomingWorldAction.techName ?? "Shifta");
+            sim.techEffects.push({
+                id: `rem-tech-${now}`,
+                spec,
+                x: incomingWorldAction.x ?? 0,
+                y: 0,
+                z: incomingWorldAction.z ?? 0,
+                yaw: incomingWorldAction.yaw ?? 0,
+                bornAt: now,
+            });
             sim.floatingTexts.push({
                 id: `rem-tech-${now}`,
                 x: incomingWorldAction.x ?? 0,
                 y: 2.3,
                 z: incomingWorldAction.z ?? 0,
-                text: `🔺 ${incomingWorldAction.senderName || "HUNTER"} CAST SHIFTA Lv30!`,
+                text: `${incomingWorldAction.senderName || "HUNTER"}: ${spec.name.toUpperCase()}`,
                 color: "#50f296",
                 bornAt: now,
             });
@@ -3000,18 +3029,38 @@ export function PsoLobby3dLayer({
         }
     }, [clearEmoteIfActive]);
 
-    const triggerTechBurst = useCallback(() => {
-        clearEmoteIfActive();
+    const lastTechNameRef = useRef("Shifta");
+    const triggerTechBurst = useCallback((techName?: string) => {
         const sim = simRef.current;
-        sim.techBurstTimer = 0.65;
-        playPsoSymbolChime("rare");
         const now = performance.now();
+        if (isAndroidClass(renderPropsRef.current.classId)) {
+            playPsoSymbolChime("alert");
+            sim.floatingTexts.push({
+                id: `tech-${now}`,
+                x: sim.px,
+                y: 2.3,
+                z: sim.pz,
+                text: "Androids can't use techniques",
+                color: "#ff8a6a",
+                bornAt: now,
+            });
+            return;
+        }
+        if (sim.techBurstTimer > 0) return;
+        const name = techName ?? lastTechNameRef.current;
+        lastTechNameRef.current = name;
+        clearEmoteIfActive();
+        const spec = getTechSpec(name);
+        sim.techCastTotal = techCastDurationSec(spec);
+        sim.techBurstTimer = sim.techCastTotal;
+        sim.techEffects.push({ id: `tech-${now}`, spec, x: sim.px, y: sim.py, z: sim.pz, yaw: sim.pyaw, bornAt: now });
+        playPsoSymbolChime("rare");
         sim.floatingTexts.push({
             id: `tech-${now}`,
             x: sim.px,
             y: 2.3,
             z: sim.pz,
-            text: reShade.khOverhaulMode ? "✨ KH CURAGA + SHIFTA Lv30!" : "🔺 SHIFTA & DEBAND Lv30!",
+            text: spec.name.toUpperCase(),
             color: "#50f296",
             bornAt: now,
         });
@@ -3028,12 +3077,21 @@ export function PsoLobby3dLayer({
             worldAction: {
                 kind: "tech_burst",
                 senderName: renderPropsRef.current.localDisplayName,
+                techName: name,
                 x: +sim.px.toFixed(2),
                 z: +sim.pz.toFixed(2),
+                yaw: +sim.pyaw.toFixed(2),
                 ts: Date.now(),
             },
         });
-    }, [clearEmoteIfActive, reShade.khOverhaulMode]);
+    }, [clearEmoteIfActive]);
+
+    const lastCastRequestNonceRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (!castTechniqueRequest || castTechniqueRequest.nonce === lastCastRequestNonceRef.current) return;
+        lastCastRequestNonceRef.current = castTechniqueRequest.nonce;
+        triggerTechBurst(castTechniqueRequest.techName);
+    }, [castTechniqueRequest, triggerTechBurst]);
 
     const switchFocusMode = useCallback((nextMode: PsoInputFocusMode, focusTarget?: "lobby_bar" | "room_composer"): void => {
         focusModeRef.current = nextMode;
@@ -3058,6 +3116,26 @@ export function PsoLobby3dLayer({
             canvasRef.current?.focus();
         }
     }, []);
+
+    // The main menu is game UI: it takes input from chat while open and hands chat focus back when it closes.
+    const focusBeforeMenuRef = useRef<{ mode: PsoInputFocusMode; target: "lobby_bar" | "room_composer" } | null>(null);
+    useEffect(() => {
+        const sim = simRef.current;
+        for (const k of ["arrowup", "arrowdown", "arrowleft", "arrowright"]) sim.keys.delete(k);
+        if (isInputSuspended) {
+            focusBeforeMenuRef.current = {
+                mode: focusModeRef.current,
+                target: activeChatSourceRef.current === "external_chat" ? "room_composer" : "lobby_bar",
+            };
+            if (focusModeRef.current === "CHAT_FOCUS") switchFocusMode("WORLD_FOCUS");
+        } else if (focusBeforeMenuRef.current) {
+            const before = focusBeforeMenuRef.current;
+            focusBeforeMenuRef.current = null;
+            if (before.mode === "CHAT_FOCUS") switchFocusMode("CHAT_FOCUS", before.target);
+        }
+        // switchFocusMode is stable (useCallback with no deps).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isInputSuspended]);
 
     // When 3D Lobby FIRST mounts, blur any active chat composer and enter WORLD_FOCUS once so WASD immediately controls your Hunter
     useEffect(() => {
@@ -3139,11 +3217,18 @@ export function PsoLobby3dLayer({
     // Keyboard & Focus Router (Capture-phase so Element's LoggedInView NEVER hijacks keys into the background chat composer while 3D Lobby is in WORLD_FOCUS!)
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent): void => {
-            if (isInputSuspendedRef.current) {
-                simRef.current.keys.clear();
-                return;
-            }
             const target = e.target as HTMLElement | null;
+            if (isInputSuspendedRef.current) {
+                const isMenuKey =
+                    e.key.startsWith("Arrow") ||
+                    e.key.startsWith("Page") ||
+                    e.key === "Enter" ||
+                    e.key === "Escape" ||
+                    e.key === "Backspace" ||
+                    e.key === "[" ||
+                    e.key === "]";
+                if (isMenuKey || isEditableDomElement(target)) return;
+            }
             const inLobbyChatInput =
                 target === lobbyChatInputRef.current || document.activeElement === lobbyChatInputRef.current;
             const inExternalComposer =
@@ -3514,6 +3599,7 @@ export function PsoLobby3dLayer({
         const uAtlasTex = gl.getUniformLocation(prog, "uAtlasTex");
 
         const builtins = buildBuiltinGeometries();
+        const techMeshes = buildTechEffectMeshes();
         const posBuf = gl.createBuffer();
         const normBuf = gl.createBuffer();
         const colBuf = gl.createBuffer();
@@ -3964,9 +4050,10 @@ export function PsoLobby3dLayer({
                             customAnimFrame = prog * (motEntry.nbFrame - 1);
                         }
                     } else if (sim.techBurstTimer > 0 && charName === rpState.localDisplayName) {
-                        motName = `mot_cast_${g3}`;
+                        // The FOmarl/FOnewearl skeleton has its own cast motion; male Forces use the male one.
+                        motName = `mot_cast_${cId === "fomarl" || cId === "fonewearl" ? "f" : g2}`;
                         const motEntry = motions[motName];
-                        const prog = Math.min(1, Math.max(0, 1.0 - sim.techBurstTimer / 0.65));
+                        const prog = Math.min(1, Math.max(0, 1.0 - sim.techBurstTimer / sim.techCastTotal));
                         if (motEntry) {
                             customAnimFrame = prog * (motEntry.nbFrame - 1);
                         }
@@ -4268,6 +4355,20 @@ export function PsoLobby3dLayer({
                         ghostMode: isGhost,
                     });
                 }
+            }
+
+            // 4b. Technique effects (additive, no depth writes so overlapping glows stack)
+            sim.techEffects = sim.techEffects.filter((fx) => isTechEffectAlive(fx, now));
+            if (sim.techEffects.length > 0) {
+                gl.depthMask(false);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+                for (const fx of sim.techEffects) {
+                    for (const c of sampleTechEffect(fx, now)) {
+                        drawMesh(techMeshes[c.mesh], mat4TRS(c.x, c.y, c.z, c.yaw, c.pitch, c.sx, c.sy, c.sz), c.tint, c.alpha);
+                    }
+                }
+                gl.depthMask(true);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             }
 
             // 5. Project Station Markers & Teleporters dynamically from `gamePackRef.current` (compiled from `map_city00_00o.dat`)

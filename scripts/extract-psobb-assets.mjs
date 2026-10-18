@@ -411,32 +411,43 @@ const BML_MOTION_TARGETS = [
     { bml: "npcapcmot.bml", entry: "pxuZ00_A01_M_body.njm", out: "mot_run_m.njm" },
     { bml: "npcapcmot.bml", entry: "pxuZ00_A01_W_body.njm", out: "mot_run_w.njm" },
     { bml: "npcapcmot.bml", entry: "pxuZ00_A01_F_body.njm", out: "mot_run_f.njm" },
-    { bml: "charamakingmot.bml", entry: "pxuZ00_C08_M_body.njm", out: "mot_cast_m.njm" },
-    { bml: "charamakingmot.bml", entry: "pxuZ00_C08_W_body.njm", out: "mot_cast_w.njm" },
-    { bml: "charamakingmot.bml", entry: "pxuZ00_C08_F_body.njm", out: "mot_cast_f.njm" },
 ];
 
+/*
+ * plymotiondata.rlc holds one global list of 572 player motions (0-based here; the community
+ * catalogue at docs.google.com/spreadsheets/d/1e0WmX1Q9BImJy6eG1pWr7PFs5gRppUNs1lXRVOsvBgo is 1-based).
+ * Suffixes: _m = male skeleton, _w = female skeleton, _f = FOmarl/FOnewearl skeleton.
+ */
 const RLC_MOTION_TARGETS = [
-    { idx: 99, hdr: 0x09a0, out: "mot_atk1_m.njm" },
-    { idx: 100, hdr: 0x0b50, out: "mot_atk2_m.njm" },
-    { idx: 101, hdr: 0x14e0, out: "mot_atk3_m.njm" },
-    { idx: 329, hdr: 0x09a0, out: "mot_atk1_w.njm" },
-    { idx: 330, hdr: 0x0b50, out: "mot_atk2_w.njm" },
-    { idx: 331, hdr: 0x14e0, out: "mot_atk3_w.njm" },
-    { idx: 482, hdr: 0x09a0, out: "mot_atk1_f.njm" },
-    { idx: 483, hdr: 0x0b50, out: "mot_atk2_f.njm" },
-    { idx: 484, hdr: 0x14e0, out: "mot_atk3_f.njm" },
-    { idx: 237, hdr: 0x0f40, out: "mot_sit_m.njm" },
-    { idx: 442, hdr: 0x0f40, out: "mot_sit_w.njm" },
-    { idx: 208, hdr: 0x0fd0, out: "mot_wave_m.njm" },
-    { idx: 417, hdr: 0x0eb0, out: "mot_wave_w.njm" },
-    { idx: 209, hdr: 0x1840, out: "mot_cheer_m.njm" },
-    { idx: 418, hdr: 0x14e0, out: "mot_cheer_w.njm" },
-    { idx: 235, hdr: 0x2380, out: "mot_dance_m.njm" },
-    { idx: 439, hdr: 0x3cd0, out: "mot_dance_w.njm" },
-    { idx: 232, hdr: 0x1960, out: "mot_bow_m.njm" },
-    { idx: 441, hdr: 0x1960, out: "mot_bow_w.njm" },
+    { idx: 98, out: "mot_cast_m.njm" },
+    { idx: 328, out: "mot_cast_w.njm" },
+    { idx: 481, out: "mot_cast_f.njm" },
+    { idx: 99, out: "mot_atk1_m.njm" },
+    { idx: 100, out: "mot_atk2_m.njm" },
+    { idx: 101, out: "mot_atk3_m.njm" },
+    { idx: 329, out: "mot_atk1_w.njm" },
+    { idx: 330, out: "mot_atk2_w.njm" },
+    { idx: 331, out: "mot_atk3_w.njm" },
+    { idx: 482, out: "mot_atk1_f.njm" },
+    { idx: 483, out: "mot_atk2_f.njm" },
+    { idx: 484, out: "mot_atk3_f.njm" },
+    { idx: 237, out: "mot_sit_m.njm" },
+    { idx: 442, out: "mot_sit_w.njm" },
+    { idx: 208, out: "mot_wave_m.njm" },
+    { idx: 417, out: "mot_wave_w.njm" },
+    { idx: 216, out: "mot_cheer_m.njm" },
+    { idx: 425, out: "mot_cheer_w.njm" },
+    { idx: 224, out: "mot_dance_m.njm" },
+    { idx: 433, out: "mot_dance_w.njm" },
+    { idx: 222, out: "mot_bow_m.njm" },
+    { idx: 431, out: "mot_bow_w.njm" },
 ];
+
+/** The REL footer's root pointer sits 0x14 bytes past the motion header in every plymotiondata chunk. */
+function findRelMotionHeader(relChunk) {
+    const root = relChunk.readUInt32LE(relChunk.length - 32 + 0x10);
+    return root - 0x14;
+}
 
 const CPT_TOWN_NPC_HDRS = [0x1a64, 0x0d00, 0x2770, 0x347c];
 
@@ -587,9 +598,9 @@ function main() {
         }
     }
 
-    // F. 15 Core Town/Battle Motions from charamakingmot.bml & npcapcmot.bml
+    // F. Core Town/Battle Motions from npcapcmot.bml
     const parsedMotionBmls = new Map();
-    for (const bmlName of ["charamakingmot.bml", "npcapcmot.bml"]) {
+    for (const bmlName of ["npcapcmot.bml"]) {
         const bmlBuf =
             getGslFile(gslBuf, gslMap, bmlName) ||
             (() => {
@@ -608,7 +619,7 @@ function main() {
         }
     }
 
-    // G. 19 Emote/Attack/Sit Motions from plymotiondata.rlc (Knuth PRNG + PRS + NMDM)
+    // G. Cast/Emote/Attack/Sit Motions from plymotiondata.rlc (Knuth PRNG + PRS + NMDM)
     const rlcRaw = getGslFile(gslBuf, gslMap, "plymotiondata.rlc");
     if (rlcRaw) {
         for (const target of RLC_MOTION_TARGETS) {
@@ -616,7 +627,7 @@ function main() {
             const sz = rlcRaw.readUInt32BE(0x20 + target.idx * 8 + 4);
             if (off > 0 && sz > 8 && off + sz <= rlcRaw.length) {
                 const relChunk = decryptAndDecompressPsoChunk(rlcRaw.slice(off, off + sz));
-                const nmdm = convertRelMotionAt(relChunk, target.hdr, 64);
+                const nmdm = convertRelMotionAt(relChunk, findRelMotionHeader(relChunk), 64);
                 writeAsset("chars", target.out, nmdm);
             }
         }

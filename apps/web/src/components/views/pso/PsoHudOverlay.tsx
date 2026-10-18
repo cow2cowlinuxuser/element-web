@@ -55,6 +55,7 @@ import {
     type PsoMainMenuTabId,
     type PsoMenuSectionId,
 } from "./PsoFullGameMenu";
+import { isAndroidClass } from "./PsoTechniqueEffects";
 
 const STORAGE_KEYS = {
     GLASS_ALPHA: "pso_hud_glass_alpha",
@@ -436,6 +437,7 @@ export function PsoHudOverlay(): JSX.Element {
     const [isFullGameMenuOpen, setIsFullGameMenuOpen] = useState<boolean>(false);
     const [gameMenuRequest, setGameMenuRequest] = useState<PsoGameMenuRequest | null>(null);
     const [lobbyViewportEl, setLobbyViewportEl] = useState<HTMLDivElement | null>(null);
+    const [techCastRequest, setTechCastRequest] = useState<{ techName: string; nonce: number } | null>(null);
     const [showFunctionKeyBar, setShowFunctionKeyBar] = useState<boolean>(() => {
         try {
             const raw = localStorage.getItem("pso_hud_show_fkey_bar");
@@ -2783,6 +2785,8 @@ export function PsoHudOverlay(): JSX.Element {
                 onSelectBgmTrack={(track) => setMenuBgmTrack(track)}
                 onSelectNpcLayout={(layout) => setMenuNpcLayout(layout)}
                 onCastTechnique={(techName, tpCost) => {
+                    if (isAndroidClass(savedHunterState.classId)) return;
+                    setTechCastRequest((prev) => ({ techName, nonce: (prev?.nonce ?? 0) + 1 }));
                     setHunterVitals((prev) => ({
                         ...prev,
                         tp: Math.max(0, prev.tp - tpCost),
@@ -2791,13 +2795,6 @@ export function PsoHudOverlay(): JSX.Element {
                                 ? prev.maxHp
                                 : prev.hp,
                     }));
-                    setIncomingWorldAction({
-                        kind: "tech_burst",
-                        senderName: profile.displayName,
-                        x: savedHunterState.x ?? 0,
-                        z: savedHunterState.z ?? 4.5,
-                        ts: Date.now(),
-                    });
                     showSymbolNotice({
                         sender: profile.displayName,
                         subtitle: `TECHNIQUE // ${techName.toUpperCase()}`,
@@ -2914,6 +2911,7 @@ export function PsoHudOverlay(): JSX.Element {
                 <PsoLobby3dLayer
                     onViewportElementChange={setLobbyViewportEl}
                     isInputSuspended={isFullGameMenuOpen}
+                    castTechniqueRequest={techCastRequest}
                     localDisplayName={profile.displayName}
                     localUserId={client?.getUserId() || "self"}
                     activeSymbolChat={

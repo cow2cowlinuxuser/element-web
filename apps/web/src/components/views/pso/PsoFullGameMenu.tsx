@@ -17,6 +17,7 @@ import {
     type PsoCompiledUiEntry,
     type PsoCompiledUiMenuSpec,
 } from "./PsoGamePackLoader";
+import { isAndroidClass } from "./PsoTechniqueEffects";
 import type {
     PsoBgmTrackId,
     PsoCityEventLayoutId,
@@ -592,6 +593,24 @@ export const PsoFullGameMenu: React.FC<PsoFullGameMenuProps> = (props) => {
         return () => document.body.classList.remove("pso-gamemenu-open");
     }, [isOpen]);
 
+    // The menu supersedes chat while open: take focus from any chat composer, and give it back on close.
+    useEffect(() => {
+        if (!isOpen) return;
+        const active = document.activeElement;
+        const restoreTo =
+            active instanceof HTMLElement &&
+            (active.isContentEditable || active.tagName === "INPUT" || active.tagName === "TEXTAREA") &&
+            !rootRef.current?.contains(active)
+                ? active
+                : null;
+        restoreTo?.blur();
+        return () => {
+            if (restoreTo?.isConnected && !document.activeElement?.closest("input, textarea, [contenteditable='true']")) {
+                restoreTo.focus();
+            }
+        };
+    }, [isOpen]);
+
     const handledRequestNonceRef = useRef<number | null>(null);
     useEffect(() => {
         if (!request || !isOpen || handledRequestNonceRef.current === request.nonce) return;
@@ -1130,6 +1149,9 @@ const PsoMenuSection: React.FC<PsoFullGameMenuProps & { section: PsoMenuSectionI
                 </div>
             );
         case "technique":
+            if (isAndroidClass(props.currentClassId)) {
+                return <div className="pso-gm-text">Androids can't use techniques.</div>;
+            }
             return (
                 <div className="pso-gm-list">
                     {techniques.map((tech) => {

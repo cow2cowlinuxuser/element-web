@@ -2886,7 +2886,14 @@ body.pso-compact-chat-mode .mx_EventTile[data-layout] .mx_EventTile_line:has(.mx
     pointer-events: none;
 }
 
-.pso-gm-host--open {
+/* Only the menu's windows take the pointer; the rest of the screen (3D view, chat) stays live behind the menu. */
+.pso-gm-host.pso-interactive,
+.pso-gm-root {
+    pointer-events: none;
+}
+
+.pso-gm-plate,
+.pso-gm-window {
     pointer-events: auto;
 }
 
