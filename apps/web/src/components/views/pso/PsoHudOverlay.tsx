@@ -298,59 +298,55 @@ function sanitizeMatrixJsonNumbers(val: unknown): unknown {
 async function sendPsoRoomPacket(
     client: NonNullable<React.ContextType<typeof SDKContext>["client"]>,
     roomId: string,
-    eventType: "io.pso.lobby_state" | "io.pso.symbol_chat",
+    eventType: "io.pso.symbol_chat",
     content: Record<string, unknown>,
 ): Promise<void> {
     const txnId = client.makeTxnId();
     const path = `/rooms/${encodeURIComponent(roomId)}/send/${encodeURIComponent(eventType)}/${encodeURIComponent(txnId)}`;
-    const ls = content.lobbyState as Record<string, unknown> | undefined;
-    const safeContent =
-        eventType === "io.pso.lobby_state" && ls
-            ? (sanitizeMatrixJsonNumbers({
-                  ...content,
-                  lobbyState: {
-                      ...ls,
-                      x100: Math.round(Number(ls.x ?? 0) * 100),
-                      z100: Math.round(Number(ls.z ?? 0) * 100),
-                      yaw100: Math.round(Number(ls.yaw ?? 0) * 100),
-                      vx100: Math.round(Number(ls.vx ?? 0) * 100),
-                      vz100: Math.round(Number(ls.vz ?? 0) * 100),
-                  },
-              }) as Record<string, unknown>)
-            : (sanitizeMatrixJsonNumbers(content) as Record<string, unknown>);
-    await client.http.authedRequest("PUT" as any, path, undefined, safeContent);
+    await client.http.authedRequest("PUT" as any, path, undefined, sanitizeMatrixJsonNumbers(content) as Record<string, unknown>);
 }
 
+/** User ID -> device ID (`"*"` when the peer's device is unknown). */
+type PsoLobbyTargets = Map<string, string>;
+
 /**
- * Ephemeral To-Device Fast Path (`PUT /_matrix/client/v3/sendToDevice/io.pso.lobby_fast/{txnId}`)
- *
- * Bypasses the Matrix room DAG, timeline persistence, and homeserver event state checks entirely!
- * Delivers 5Hz (200ms) real-time 3D position + velocity (`vx, vz`) + world action packets directly
- * to online Hunters in the room/call in <50ms.
+ * Lobby movement, presence and world actions travel only as to-device `io.pso.lobby_fast` messages: never as room
+ * events (they would stay in the room history forever and other clients must page through them), and only to
+ * devices known to be in the lobby. Homeservers queue to-device messages for offline devices until they next sync,
+ * so a broadcast to every member's devices piles up on phones that never open the lobby.
  */
-async function sendPsoFastToDevice(
+async function sendPsoLobbyToDevice(
     client: NonNullable<React.ContextType<typeof SDKContext>["client"]>,
-    roomId: string,
+    targets: PsoLobbyTargets,
     payload: Record<string, unknown>,
 ): Promise<void> {
-    const room = client.getRoom(roomId);
-    if (!room) return;
-    const myUserId = client.getUserId();
-    const members = room
-        .getJoinedMembers()
-        .map((m) => m.userId)
-        .filter((uid) => uid && uid !== myUserId)
-        .slice(0, 24);
-    if (members.length === 0) return;
-
+    if (targets.size === 0) return;
     const messages: Record<string, Record<string, Record<string, unknown>>> = {};
-    for (const uid of members) {
-        messages[uid] = { "*": payload };
+    for (const [userId, deviceId] of targets) {
+        messages[userId] = { [deviceId]: payload };
     }
     const txnId = client.makeTxnId();
     const path = `/sendToDevice/${encodeURIComponent("io.pso.lobby_fast")}/${encodeURIComponent(txnId)}`;
     await client.http.authedRequest("PUT" as any, path, undefined, { messages });
 }
+
+/** Every joined member's devices; used only for the one-off discovery ping when the lobby opens. */
+function psoRoomMemberTargets(
+    client: NonNullable<React.ContextType<typeof SDKContext>["client"]>,
+    roomId: string,
+): PsoLobbyTargets {
+    const myUserId = client.getUserId();
+    const members = (client.getRoom(roomId)?.getJoinedMembers() ?? [])
+        .map((m) => m.userId)
+        .filter((uid) => uid && uid !== myUserId)
+        .slice(0, 24);
+    return new Map(members.map((uid) => [uid, "*"]));
+}
+
+/** Peers silent for longer than this are dropped (remote avatars expire after 120s). */
+const PSO_LOBBY_PEER_TTL_MS = 120000;
+/** Lobby packets older than this are history (e.g. a backlog drained after a device was offline) and are ignored. */
+const PSO_LOBBY_PACKET_MAX_AGE_MS = 30000;
 
 export function PsoHudOverlay(): JSX.Element {
     const sdkContext = useContext(SDKContext);
@@ -521,8 +517,17 @@ export function PsoHudOverlay(): JSX.Element {
               }
             : null,
     );
-    const lobbySendInFlightRef = useRef<boolean>(false);
-    const lastRoomPacketSentAtRef = useRef<number>(0);
+    /** Clients that have sent us lobby packets, keyed by user ID. */
+    const lobbyPeersRef = useRef(new Map<string, { roomId: string; deviceId: string; lastSeen: number }>());
+    const activeLobbyPeerTargets = useCallback((roomId: string): PsoLobbyTargets => {
+        const now = Date.now();
+        const targets: PsoLobbyTargets = new Map();
+        for (const [userId, peer] of lobbyPeersRef.current) {
+            if (now - peer.lastSeen > PSO_LOBBY_PEER_TTL_MS) lobbyPeersRef.current.delete(userId);
+            else if (peer.roomId === roomId) targets.set(userId, peer.deviceId);
+        }
+        return targets;
+    }, []);
 
     // Live Matrix Homeserver Ping / Latency & WebAudio Mic dB / Peaking Meter
     const [pingMs, setPingMs] = useState<number>(24);
@@ -873,16 +878,16 @@ export function PsoHudOverlay(): JSX.Element {
                     ghostMode: true,
                 },
                 senderName: profile.displayName,
+                deviceId: client.getDeviceId(),
                 ts: Date.now(),
             };
-            void sendPsoFastToDevice(client, roomId, payload).catch(() => {});
-            void sendPsoRoomPacket(client, roomId, "io.pso.lobby_state", payload).catch(() => {});
+            void sendPsoLobbyToDevice(client, activeLobbyPeerTargets(roomId), payload).catch(() => {});
         };
 
         broadcastGhostPresence();
         const interval = window.setInterval(broadcastGhostPresence, 20000);
         return () => window.clearInterval(interval);
-    }, [isLobby3dOpen, ghostStandbyEnabled, client, sdkContext, activeCall?.roomId, profile.displayName]);
+    }, [isLobby3dOpen, ghostStandbyEnabled, client, sdkContext, activeCall?.roomId, profile.displayName, activeLobbyPeerTargets]);
 
     useEffect(() => {
         const timer = window.setInterval(() => {
@@ -1188,7 +1193,17 @@ export function PsoHudOverlay(): JSX.Element {
                     event.sender?.name ||
                     senderId ||
                     "Hunter";
-                if (lobbyState && typeof lobbyState.x === "number" && !isOwnEvent) {
+                const sentAt = typeof rawContent.ts === "number" ? rawContent.ts : event.getTs();
+                if (Date.now() - sentAt > PSO_LOBBY_PACKET_MAX_AGE_MS) return;
+                const packetRoomId =
+                    event.getRoomId() ?? (typeof rawContent.roomId === "string" ? rawContent.roomId : null);
+                if (lobbyState && typeof lobbyState.x === "number" && !isOwnEvent && packetRoomId) {
+                    const senderDeviceId = typeof rawContent.deviceId === "string" ? rawContent.deviceId : "*";
+                    lobbyPeersRef.current.set(senderId, {
+                        roomId: packetRoomId,
+                        deviceId: senderDeviceId,
+                        lastSeen: Date.now(),
+                    });
                     setRemoteLobbyPlayers((prev) => ({
                         ...prev,
                         [senderId]: {
@@ -1203,24 +1218,16 @@ export function PsoHudOverlay(): JSX.Element {
                     }
                     // If the other player just opened their 3D Lobby (`requestSync: true`) and we have a known 3D state, immediately reply with our coordinates so both Hunters appear right away!
                     if (lobbyState.requestSync && lastLocalLobbyStateRef.current) {
-                        const targetRoomId =
-                            event.getRoomId() ??
-                            (typeof rawContent.roomId === "string" ? rawContent.roomId : null) ??
-                            sdkContext.roomViewStore.getRoomId() ??
-                            activeCall?.roomId ??
-                            null;
-                        if (targetRoomId) {
-                            const replyPayload = {
-                                roomId: targetRoomId,
-                                lobbyState: { ...lastLocalLobbyStateRef.current, requestSync: false },
-                                senderName: profile.displayName,
-                                ts: Date.now(),
-                            };
-                            void sendPsoFastToDevice(client, targetRoomId, replyPayload).catch(() => {});
-                            void sendPsoRoomPacket(client, targetRoomId, "io.pso.lobby_state", replyPayload).catch(
-                                () => {},
-                            );
-                        }
+                        const replyPayload = {
+                            roomId: packetRoomId,
+                            lobbyState: { ...lastLocalLobbyStateRef.current, requestSync: false },
+                            senderName: profile.displayName,
+                            deviceId: client.getDeviceId(),
+                            ts: Date.now(),
+                        };
+                        void sendPsoLobbyToDevice(client, new Map([[senderId, senderDeviceId]]), replyPayload).catch(
+                            () => {},
+                        );
                     }
                 }
                 return;
@@ -1303,9 +1310,12 @@ export function PsoHudOverlay(): JSX.Element {
                             ghostMode: true,
                         },
                         senderName: profile.displayName,
+                        deviceId: client.getDeviceId(),
                         ts: Date.now(),
                     };
-                    void sendPsoFastToDevice(client, targetRoomId, ghostPayload).catch(() => {});
+                    void sendPsoLobbyToDevice(client, activeLobbyPeerTargets(targetRoomId), ghostPayload).catch(
+                        () => {},
+                    );
                 }
             }
 
@@ -1388,7 +1398,16 @@ export function PsoHudOverlay(): JSX.Element {
             client.off(MatrixEventEvent.Decrypted, onEventDecrypted);
             client.off(ClientEvent.ToDeviceEvent, onToDeviceEvent);
         };
-    }, [activeCall?.roomId, client, isCompactChat, isStreamOverlay, profile.displayName, sdkContext.roomViewStore, showSymbolNotice]);
+    }, [
+        activeCall?.roomId,
+        activeLobbyPeerTargets,
+        client,
+        isCompactChat,
+        isStreamOverlay,
+        profile.displayName,
+        sdkContext.roomViewStore,
+        showSymbolNotice,
+    ]);
 
     const sendRoomTextIfEnabled = useCallback(
         async (text: string, forceSend = false): Promise<void> => {
@@ -3012,30 +3031,14 @@ export function PsoHudOverlay(): JSX.Element {
                             roomId,
                             lobbyState,
                             senderName: profile.displayName,
+                            deviceId: client.getDeviceId(),
                             ts: Date.now(),
                         };
-
-                        // 1. Ephemeral To-Device Fast Path (<50ms real-time movement + velocity + worldAction sync, 0 room DAG load)
-                        void sendPsoFastToDevice(client, roomId, payload).catch(() => {});
-
-                        // 2. Room Packet Fallback (sent on initial sync, stop, attack, emote, worldAction, or throttled every 1.1s while moving)
-                        const now = Date.now();
-                        const shouldSendRoomPacket =
-                            !lobbyState.fastTick ||
-                            Boolean(lobbyState.requestSync) ||
-                            Boolean(lobbyState.worldAction) ||
-                            now - lastRoomPacketSentAtRef.current >= 1100;
-
-                        if (!shouldSendRoomPacket) return;
-                        if (lobbySendInFlightRef.current && !lobbyState.requestSync && !lobbyState.worldAction) return;
-
-                        lobbySendInFlightRef.current = true;
-                        lastRoomPacketSentAtRef.current = now;
-                        void sendPsoRoomPacket(client, roomId, "io.pso.lobby_state", payload)
-                            .catch(() => {})
-                            .finally(() => {
-                                lobbySendInFlightRef.current = false;
-                            });
+                        // Opening the lobby pings every member once so peers can answer; after that only peers hear us.
+                        const targets = lobbyState.requestSync
+                            ? psoRoomMemberTargets(client, roomId)
+                            : activeLobbyPeerTargets(roomId);
+                        void sendPsoLobbyToDevice(client, targets, payload).catch(() => {});
                     }}
                     onClose={() => setIsLobby3dOpen(false)}
                     onMouseEnter={onHudMouseEnter}
