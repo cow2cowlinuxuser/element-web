@@ -2335,6 +2335,11 @@ body.pso-unified-guild-chat-hidden .mx_RoomView_wrapper {
     pointer-events: none;
 }
 
+/* Compact mode shows only the 4-hex cluster, tucked under the floating chat box. */
+.pso-hex-bar-wrap--compact {
+    justify-content: flex-end;
+}
+
 .pso-hex-quickbar {
     display: flex;
     align-items: center;
@@ -2850,23 +2855,6 @@ body.pso-compact-chat-mode .mx_EventTile[data-layout] .mx_EventTile_line:has(.mx
     font-style: italic;
     color: var(--pso-fg-cyan-mid);
     opacity: 0.78;
-}
-
-.pso-beat-time-readout {
-    padding: 3px 10px;
-    border-radius: 4px;
-    background: rgb(5, 20, 28, 0.86);
-    border: 1px solid rgb(88, 207, 201, 0.45);
-    color: var(--pso-fg-cyan-ice);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
-    text-shadow: 0 1px 2px #000000;
-}
-
-.pso-beat-time-readout strong {
-    color: var(--pso-amber-bright);
 }
 
 /* Section ID Dot & Clickable Nameplate + PSOBB Hunter Guild Card Modal */

@@ -210,24 +210,6 @@ function readInitialHexSlots(): PsoHexActionId[] {
     return HEX_PRESETS.classic;
 }
 
-/**
- * Calculates official PSO Swatch Internet Time (@beats, UTC+1) and local HH:MM.
- */
-function computeBeatTime(now: Date = new Date()): { clock: string; beat: string } {
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    const utcSeconds =
-        ((now.getUTCHours() + 1) % 24) * 3600 +
-        now.getUTCMinutes() * 60 +
-        now.getUTCSeconds() +
-        now.getUTCMilliseconds() / 1000;
-    const beats = Math.floor((utcSeconds / 86.4) % 1000);
-    return {
-        clock: `${hh}:${mm}`,
-        beat: String(beats).padStart(3, "0"),
-    };
-}
-
 function sendElectronIpc(name: string, ...args: unknown[]): void {
     try {
         const anyWin = window as unknown as {
@@ -566,6 +548,8 @@ export function PsoHudOverlay(): JSX.Element {
     });
     const [compactFoldPhase, setCompactFoldPhase] = useState<"idle" | "unfolding" | "folding">("idle");
     const compactFoldTimerRef = useRef<number | null>(null);
+    /** The main menu is a gameplay pause menu: it exists in the 3D lobby and over the compact chat, not the full chat screen. */
+    const isGameMenuAvailable = isLobby3dOpen || isCompactChat;
     /** What entering compact mode put away, so leaving it can bring it back. */
     const compactStashRef = useRef<{ rightPanelRoomId: string | null; minimisedCall: boolean }>({
         rightPanelRoomId: null,
@@ -586,7 +570,6 @@ export function PsoHudOverlay(): JSX.Element {
     const [isQuickReplyOpen, setIsQuickReplyOpen] = useState<boolean>(false);
     const [quickReplyText, setQuickReplyText] = useState<string>("");
     const [activeHexAction, setActiveHexAction] = useState<PsoHexActionId>("symbol_rappy");
-    const [beatTime, setBeatTime] = useState<{ clock: string; beat: string }>(() => computeBeatTime());
     const [symbolNotice, setSymbolNotice] = useState<SymbolChatNotice | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -991,13 +974,6 @@ export function PsoHudOverlay(): JSX.Element {
         return () => window.clearInterval(interval);
     }, [isLobby3dOpen, ghostStandbyEnabled, client, sdkContext, activeCall?.roomId, profile.displayName, activeLobbyPeerTargets]);
 
-    useEffect(() => {
-        const timer = window.setInterval(() => {
-            setBeatTime(computeBeatTime());
-        }, 5000);
-        return () => window.clearInterval(timer);
-    }, []);
-
     // Sync CSS Custom Properties, body classes, transparency, and Always-On-Top state
     useEffect(() => {
         const root = document.documentElement;
@@ -1084,7 +1060,14 @@ export function PsoHudOverlay(): JSX.Element {
             );
 
             let shouldCaptureMouse = false;
-            if (overHudControl || isTunerOpen || isQuickReplyOpen || isSymbolEditorOpen || isLobby3dOpen) {
+            if (
+                overHudControl ||
+                isTunerOpen ||
+                isQuickReplyOpen ||
+                isSymbolEditorOpen ||
+                isLobby3dOpen ||
+                isFullGameMenuOpen
+            ) {
                 shouldCaptureMouse = true;
             } else if (isStreamOverlay) {
                 shouldCaptureMouse = false;
@@ -1115,7 +1098,15 @@ export function PsoHudOverlay(): JSX.Element {
                 sendElectronIpc("setPsoIgnoreMouseEvents", false);
             }
         };
-    }, [isStreamOverlay, isCompactChat, isTunerOpen, isQuickReplyOpen, isSymbolEditorOpen, isLobby3dOpen]);
+    }, [
+        isStreamOverlay,
+        isCompactChat,
+        isTunerOpen,
+        isQuickReplyOpen,
+        isSymbolEditorOpen,
+        isLobby3dOpen,
+        isFullGameMenuOpen,
+    ]);
 
     // Escape in pass-through modes hands keyboard focus back to the window behind
     useEffect(() => {
@@ -1943,18 +1934,17 @@ export function PsoHudOverlay(): JSX.Element {
         });
     }, []);
 
-    // The main menu is a gameplay pause menu: it only exists while the 3D lobby is up.
     useEffect(() => {
-        if (!isLobby3dOpen) setIsFullGameMenuOpen(false);
-    }, [isLobby3dOpen]);
+        if (!isGameMenuAvailable) setIsFullGameMenuOpen(false);
+    }, [isGameMenuAvailable]);
 
     const openGameMenuAt = useCallback(
         (tab: PsoMainMenuTabId, section: PsoMenuSectionId | null): void => {
-            if (!isLobby3dOpen) return;
+            if (!isGameMenuAvailable) return;
             setIsFullGameMenuOpen(true);
             setGameMenuRequest((prev) => ({ tab, section, nonce: (prev?.nonce ?? 0) + 1 }));
         },
-        [isLobby3dOpen],
+        [isGameMenuAvailable],
     );
 
     /** PSOBB function-key bar: index 0 = F1 ... 11 = F12. */
@@ -2000,11 +1990,11 @@ export function PsoHudOverlay(): JSX.Element {
                     sendElectronIpc("psoWindowToggleFullScreen");
                     break;
                 case 11:
-                    if (isLobby3dOpen) setIsFullGameMenuOpen((prev) => !prev);
+                    if (isGameMenuAvailable) setIsFullGameMenuOpen((prev) => !prev);
                     break;
             }
         },
-        [isLobby3dOpen, openGameMenuAt, playUiMenuSound, toggleCompactChat, toggleFunctionKeyBar],
+        [isGameMenuAvailable, openGameMenuAt, playUiMenuSound, toggleCompactChat, toggleFunctionKeyBar],
     );
 
     // Keyboard shortcuts: F12 PSOBB Main Menu, F1-F10 Function Keys, Alt+1..Alt+0 for Equipped Hex Quickbar, Alt+O / Alt+C / Alt+G, F11
@@ -2013,10 +2003,10 @@ export function PsoHudOverlay(): JSX.Element {
             const fKeyMatch = /^F([1-9]|1[0-2])$/.exec(e.key);
             if (fKeyMatch && !e.ctrlKey && !e.altKey && !e.metaKey) {
                 const index = Number(fKeyMatch[1]) - 1;
-                // F1-F10 only act as game keys while the PSO bar, lobby or menu is up; F12 only in the lobby; F11 always.
+                // F1-F10 only act as game keys while the PSO bar, lobby or menu is up; F12 only where the menu exists; F11 always.
                 const isGameKey =
                     index === 10 ||
-                    (index === 11 ? isLobby3dOpen : isFullGameMenuOpen || isLobby3dOpen || showFunctionKeyBar);
+                    (index === 11 ? isGameMenuAvailable : isFullGameMenuOpen || isLobby3dOpen || showFunctionKeyBar);
                 if (isGameKey) {
                     e.preventDefault();
                     pressFunctionKey(index);
@@ -2055,6 +2045,7 @@ export function PsoHudOverlay(): JSX.Element {
         equippedHexDefs,
         executeHexAction,
         isFullGameMenuOpen,
+        isGameMenuAvailable,
         isLobby3dOpen,
         isStreamOverlay,
         pressFunctionKey,
@@ -2203,7 +2194,7 @@ export function PsoHudOverlay(): JSX.Element {
             )}
 
             {/* FRAMELESS WINDOW DRAG TITLEBAR + SNAP / CLICK-THRU / WINDOW CONTROLS + RESIZE EDGES */}
-            {!isStreamOverlay && (
+            {!isStreamOverlay && !isCompactChat && (
                 <>
                     <div
                         className="pso-window-titlebar pso-interactive"
@@ -2348,7 +2339,8 @@ export function PsoHudOverlay(): JSX.Element {
             )}
 
             {/* 2. TOP-LEFT PSO EPISODE IV PLAYER GAUGE + COMPACT PARTY VOICE STACK (Visible only in 3D Game, Compact Chat, or Stream Overlay) */}
-            {(isStreamOverlay || isCompactChat || isLobby3dOpen) &&
+            {(isStreamOverlay || isLobby3dOpen) &&
+                !isCompactChat &&
                 !isFullGameMenuOpen &&
                 placeInLobbyViewport(
                 <div
@@ -2702,7 +2694,7 @@ export function PsoHudOverlay(): JSX.Element {
                 showFunctionKeyBar={showFunctionKeyBar}
                 onToggleOpen={(nextOpen) =>
                     setIsFullGameMenuOpen((prev) =>
-                        isLobby3dOpen && (typeof nextOpen === "boolean" ? nextOpen : !prev),
+                        isGameMenuAvailable && (typeof nextOpen === "boolean" ? nextOpen : !prev),
                     )
                 }
                 onToggleFunctionKeyBar={toggleFunctionKeyBar}
@@ -3336,12 +3328,14 @@ export function PsoHudOverlay(): JSX.Element {
 
             {/* 6. BOTTOM EPISODE IV DYNAMIC-WIDTH HEXAGONAL ACTION PALETTE + 4-HEX CLUSTER + @BEAT TIME */}
             <div
-                className="pso-hex-bar-wrap pso-interactive"
+                className={classNames("pso-hex-bar-wrap pso-interactive", {
+                    "pso-hex-bar-wrap--compact": isCompactChat,
+                })}
                 data-testid="pso-hex-quickbar"
                 onMouseEnter={onHudMouseEnter}
                 onMouseLeave={onHudMouseLeave}
             >
-                {equippedHexDefs.length > 0 && (
+                {equippedHexDefs.length > 0 && !isCompactChat && (
                     <div
                         className="pso-hex-quickbar"
                         role="toolbar"
@@ -3584,9 +3578,6 @@ export function PsoHudOverlay(): JSX.Element {
                         </button>
                         </>
                         )}
-                    </div>
-                    <div className="pso-beat-time-readout" data-testid="pso-beat-time">
-                        {beatTime.clock} / internet time <strong>@ {beatTime.beat}</strong>
                     </div>
                 </div>
             </div>

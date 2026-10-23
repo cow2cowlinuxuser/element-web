@@ -40,7 +40,6 @@ describe("PsoHudOverlay", () => {
 
         expect(screen.getByTestId("pso-hud-backdrop")).toBeInTheDocument();
         expect(screen.getByTestId("pso-hex-quickbar")).toBeInTheDocument();
-        expect(screen.getByTestId("pso-beat-time")).toHaveTextContent(/internet time/i);
         expect(document.body).toHaveClass("pso-hud-theme");
 
         // Clicking hex slot 1 triggers the Shichimiya Rappy Symbol Chat popup
@@ -62,16 +61,16 @@ describe("PsoHudOverlay", () => {
         expect(screen.getByText("VOICE")).toBeInTheDocument();
     });
 
-    it("enters compact chat with the player overlay and the compact hex cluster, folds the chat away and restores", async () => {
+    it("enters compact chat showing only the compact hex cluster, folds the chat away and restores", async () => {
         const PsoHudOverlay = wrapInSdkContext(UnwrappedPsoHudOverlay, sdkContext);
         render(<PsoHudOverlay />);
-
-        expect(screen.queryByTestId("pso-status-hud")).toBeNull();
 
         await userEvent.click(screen.getByTestId("pso-compact-chat-toggle"));
         expect(document.body).toHaveClass("pso-compact-chat-mode");
         expect(document.body).toHaveClass("pso-compact-unfolding");
-        expect(screen.getByTestId("pso-status-hud")).toBeInTheDocument();
+        expect(screen.queryByTestId("pso-status-hud")).toBeNull();
+        expect(screen.queryByTestId("pso-titlebar-compact-chat-btn")).toBeNull();
+        expect(screen.queryByTestId("pso-hex-slot-1")).toBeNull();
         expect(screen.getByTestId("pso-compact-hex-cluster")).toBeInTheDocument();
         expect(screen.getByTestId("pso-compact-hex-refresh")).toBeInTheDocument();
 
@@ -88,15 +87,19 @@ describe("PsoHudOverlay", () => {
         expect(screen.queryByTestId("pso-compact-hex-cluster")).toBeNull();
     });
 
-    it("toggles compact chat from the title bar button", async () => {
+    it("enters compact chat from the title bar button and opens the main menu there with F12", async () => {
         const PsoHudOverlay = wrapInSdkContext(UnwrappedPsoHudOverlay, sdkContext);
         render(<PsoHudOverlay />);
 
         await userEvent.click(screen.getByTestId("pso-titlebar-compact-chat-btn"));
         expect(document.body).toHaveClass("pso-compact-chat-mode");
 
-        await userEvent.click(screen.getByTestId("pso-titlebar-compact-chat-btn"));
+        await userEvent.keyboard("{F12}");
+        expect(screen.getByTestId("pso-full-game-menu")).toBeInTheDocument();
+
+        await userEvent.click(screen.getByTestId("pso-compact-hex-restore"));
         await waitFor(() => expect(document.body).not.toHaveClass("pso-compact-chat-mode"));
+        await waitFor(() => expect(screen.queryByTestId("pso-full-game-menu")).toBeNull());
     });
 
     it("closes the right panel when entering compact chat and reopens it on restore", async () => {
