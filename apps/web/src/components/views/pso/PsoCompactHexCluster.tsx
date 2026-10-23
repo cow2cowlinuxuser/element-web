@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type JSX, useEffect, useState } from "react";
+import React, { type JSX, type Ref, useEffect, useState } from "react";
 import classNames from "classnames";
 
 import { loadPsoUiSprite } from "./PsoGamePackLoader";
@@ -19,8 +19,11 @@ const SPRITES = {
     chat: { tex: 6, rect: [150, 129, 50, 43] },
     restore: { tex: 6, rect: [200, 129, 50, 43] },
     refresh: { tex: 6, rect: [100, 86, 50, 43] },
+    gear: { tex: 7, rect: [0, 172, 50, 43] },
     blank: { tex: 7, rect: [100, 0, 50, 43] },
 } as const satisfies Record<string, { tex: number; rect: readonly [number, number, number, number] }>;
+
+export type PsoHexSpriteKey = Exclude<keyof typeof SPRITES, "frame" | "blank">;
 
 type SpriteKey = keyof typeof SPRITES;
 
@@ -43,62 +46,42 @@ function useHudSprites(): Partial<Record<SpriteKey, string>> {
     return sprites;
 }
 
-interface Props {
-    isChatHidden: boolean;
-    onToggleChat: () => void;
-    onRestore: () => void;
-    onRefresh: () => void;
-}
+type Position = "top" | "left" | "right" | "bottom";
 
-interface Slot {
-    position: "top" | "left" | "right" | "bottom";
-    sprite: SpriteKey;
-    /** Frame colour of this position in the game's cluster; used when the sheet isn't extracted. */
-    rim: string;
-    glyph: string;
-    title?: string;
+/** Frame colour of each position in the game's cluster; used when the sheet isn't extracted. */
+const RIMS: Record<Position, string> = {
+    top: "#e8c03a",
+    left: "#3a6ee8",
+    right: "#e83a3a",
+    bottom: "#3ae85b",
+};
+
+const GLYPHS: Record<PsoHexSpriteKey, string> = {
+    chat: "💬",
+    restore: "⇤",
+    refresh: "⤵",
+    gear: "⚙",
+};
+
+export interface PsoHexSlot {
+    sprite: PsoHexSpriteKey;
+    title: string;
     testId?: string;
-    onClick?: () => void;
+    onClick: () => void;
     lit?: boolean;
+    buttonRef?: Ref<HTMLButtonElement>;
 }
 
-/**
- * Compact-mode replacement for the 4-hex diamond, drawn from the game's own HUD cluster frame and icons:
- * chat (fold the chat box away or back), restore the full window, refresh Element, and a spare blank hex.
- */
-export function PsoCompactHexCluster({ isChatHidden, onToggleChat, onRestore, onRefresh }: Props): JSX.Element {
+interface Props {
+    /** Positions left out render as the game's blank hex. */
+    slots: Partial<Record<Position, PsoHexSlot>>;
+}
+
+const POSITIONS: Position[] = ["top", "left", "right", "bottom"];
+
+/** The 4-hex diamond, drawn from the game's own HUD cluster frame and icons. */
+export function PsoCompactHexCluster({ slots }: Props): JSX.Element {
     const sprites = useHudSprites();
-    const slots: Slot[] = [
-        {
-            position: "top",
-            sprite: "chat",
-            rim: "#e8c03a",
-            glyph: "💬",
-            title: isChatHidden ? "Show chat" : "Hide chat",
-            testId: "pso-compact-hex-chat",
-            onClick: onToggleChat,
-            lit: !isChatHidden,
-        },
-        {
-            position: "left",
-            sprite: "restore",
-            rim: "#3a6ee8",
-            glyph: "⇤",
-            title: "Restore full window (Alt+C)",
-            testId: "pso-compact-hex-restore",
-            onClick: onRestore,
-        },
-        {
-            position: "right",
-            sprite: "refresh",
-            rim: "#e83a3a",
-            glyph: "⤵",
-            title: "Refresh Element (keeps your session and room)",
-            testId: "pso-compact-hex-refresh",
-            onClick: onRefresh,
-        },
-        { position: "bottom", sprite: "blank", rim: "#3ae85b", glyph: "" },
-    ];
 
     return (
         <div
@@ -106,35 +89,38 @@ export function PsoCompactHexCluster({ isChatHidden, onToggleChat, onRestore, on
             data-testid="pso-compact-hex-cluster"
         >
             {sprites.frame && <img className="pso-compact-hex-frame" src={sprites.frame} alt="" draggable={false} />}
-            {slots.map((slot) => {
-                const face = sprites[slot.sprite] ? (
-                    <img src={sprites[slot.sprite]} alt="" draggable={false} />
+            {POSITIONS.map((position) => {
+                const slot = slots[position];
+                const sprite = sprites[slot?.sprite ?? "blank"];
+                const face = sprite ? (
+                    <img src={sprite} alt="" draggable={false} />
                 ) : (
                     <>
                         <svg viewBox="0 0 50 43" aria-hidden="true">
                             <polygon
                                 points="12.5,1.5 37.5,1.5 48.5,21.5 37.5,41.5 12.5,41.5 1.5,21.5"
                                 fill="rgba(40, 46, 50, 0.92)"
-                                stroke={slot.rim}
+                                stroke={RIMS[position]}
                                 strokeWidth="2.5"
                             />
                         </svg>
-                        {slot.glyph && <span>{slot.glyph}</span>}
+                        {slot && <span>{GLYPHS[slot.sprite]}</span>}
                     </>
                 );
-                const className = classNames("pso-compact-hex", `pso-compact-hex--${slot.position}`, {
-                    "pso-compact-hex--lit": slot.lit,
+                const className = classNames("pso-compact-hex", `pso-compact-hex--${position}`, {
+                    "pso-compact-hex--lit": slot?.lit,
                 });
-                if (!slot.onClick) {
+                if (!slot) {
                     return (
-                        <div key={slot.position} className={className} aria-hidden="true">
+                        <div key={position} className={className} aria-hidden="true">
                             {face}
                         </div>
                     );
                 }
                 return (
                     <button
-                        key={slot.position}
+                        key={position}
+                        ref={slot.buttonRef}
                         type="button"
                         className={className}
                         onClick={slot.onClick}

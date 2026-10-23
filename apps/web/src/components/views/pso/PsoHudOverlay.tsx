@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type JSX, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { type ComponentProps, type JSX, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import classNames from "classnames";
 import {
@@ -61,6 +61,7 @@ import {
 } from "./PsoFullGameMenu";
 import { isAndroidClass } from "./PsoTechniqueEffects";
 import { PsoCompactHexCluster } from "./PsoCompactHexCluster";
+import { PsoCompactChatDragHandle } from "./PsoCompactChatDragHandle";
 import { PsoMessageTicker } from "./PsoMessageTicker";
 import { playPsoSfx, preloadPsoSfx, type PsoSfxId } from "./PsoSfx";
 
@@ -716,6 +717,44 @@ export function PsoHudOverlay(): JSX.Element {
         if (hasElectronIpc()) sendElectronIpc("psoReloadWebapp");
         else window.location.reload();
     }, [activeCall]);
+
+    const compactHexSlots: ComponentProps<typeof PsoCompactHexCluster>["slots"] = {
+        top: {
+            sprite: "chat",
+            title: isCompactChatHidden ? "Show chat" : "Hide chat",
+            testId: "pso-compact-hex-chat",
+            onClick: toggleCompactChatHidden,
+            lit: !isCompactChatHidden,
+        },
+        left: {
+            sprite: "restore",
+            title: "Restore full window (Alt+C)",
+            testId: "pso-compact-hex-restore",
+            onClick: exitCompactChat,
+        },
+        right: {
+            sprite: "refresh",
+            title: "Refresh Element (keeps your session and room)",
+            testId: "pso-compact-hex-refresh",
+            onClick: () => void reloadWebapp(),
+        },
+    };
+    const dockedHexSlots: ComponentProps<typeof PsoCompactHexCluster>["slots"] = {
+        top: {
+            sprite: "chat",
+            title: "Compact chat (Alt+C)",
+            testId: "pso-compact-chat-toggle",
+            onClick: enterCompactChat,
+        },
+        bottom: {
+            sprite: "gear",
+            title: "PSO HUD & Wallpaper Tuner + Hex Tray Customizer",
+            testId: "pso-tuner-toggle",
+            onClick: () => setIsTunerOpen((prev) => !prev),
+            lit: isTunerOpen,
+            buttonRef: tunerToggleRef,
+        },
+    };
 
     const [idleAudioMuted, setIdleAudioMuted] = useState(false);
     const [idleDeafened, setIdleDeafened] = useState<boolean>(() => readInitialDeafened());
@@ -3362,6 +3401,9 @@ export function PsoHudOverlay(): JSX.Element {
             {isCompactChat && isCompactChatHidden && client && (
                 <PsoMessageTicker client={client} />
             )}
+            {isCompactChat && (
+                <PsoCompactChatDragHandle hidden={isCompactChatHidden || compactFoldPhase !== "idle"} />
+            )}
 
             {/* 6. BOTTOM EPISODE IV DYNAMIC-WIDTH HEXAGONAL ACTION PALETTE + 4-HEX CLUSTER + @BEAT TIME */}
             <div
@@ -3433,9 +3475,7 @@ export function PsoHudOverlay(): JSX.Element {
                     }
                 >
                     <div
-                        className={classNames("pso-hex-diamond-group", {
-                            "pso-hex-diamond-group--compact": isCompactChat,
-                        })}
+                        className="pso-hex-diamond-group"
                     >
                         {/* Center Drag Handle to Move the 4-Hexagon Quadrant Anywhere on Screen */}
                         <div
@@ -3481,140 +3521,9 @@ export function PsoHudOverlay(): JSX.Element {
                         >
                             ✥
                         </div>
-                        {isCompactChat ? (
-                            <PsoCompactHexCluster
-                                isChatHidden={isCompactChatHidden}
-                                onToggleChat={toggleCompactChatHidden}
-                                onRestore={exitCompactChat}
-                                onRefresh={() => void reloadWebapp()}
-                            />
-                        ) : (
-                        <>
-                        {/* TOP HEXAGON: Chatting (Quick SAY / Right-click for Symbol Chat Maker) */}
-                        <button
-                            type="button"
-                            className={classNames("pso-tri-hex pso-tri-hex--diamond-top", {
-                                "pso-tri-hex--active": isQuickReplyOpen || isSymbolEditorOpen,
-                            })}
-                            onClick={() => executeHexAction("quick_comm")}
-                            onContextMenu={(e) => {
-                                e.preventDefault();
-                                setIsSymbolEditorOpen((prev) => !prev);
-                            }}
-                            title="Quick Comm Chat Input (Alt+0) • Right-Click: Open PSO Symbol Chat Maker"
-                        >
-                            <svg viewBox="0 0 44 44">
-                                <polygon
-                                    points="22,2 41,12 41,32 22,42 3,32 3,12"
-                                    fill={
-                                        isQuickReplyOpen || isSymbolEditorOpen
-                                            ? "rgba(42, 132, 156, 0.94)"
-                                            : "rgba(16, 48, 62, 0.9)"
-                                    }
-                                    stroke="#8ae3dd"
-                                    strokeWidth="2.4"
-                                />
-                                <polygon
-                                    points="22,6 37,14 37,30 22,38 7,30 7,14"
-                                    fill="none"
-                                    stroke="rgba(255, 255, 255, 0.35)"
-                                    strokeWidth="1"
-                                />
-                            </svg>
-                            <span>💬</span>
-                        </button>
-
-                        {/* MIDDLE-LEFT HEXAGON: Compact Text-Only Chatbox + Top-Left Voice HUD (Alt+C) */}
-                        <button
-                            type="button"
-                            className={classNames("pso-tri-hex pso-tri-hex--diamond-left", {
-                                "pso-tri-hex--active": isCompactChat,
-                            })}
-                            onClick={() => executeHexAction("compact_chat")}
-                            title={
-                                isCompactChat
-                                    ? "Exit Compact PSO Chat & Party Voice HUD (Alt+C)"
-                                    : "Compact PSO Chat & Top-Left Party Voice HUD (Alt+C)"
-                            }
-                            data-testid="pso-compact-chat-toggle"
-                        >
-                            <svg viewBox="0 0 44 44">
-                                <polygon
-                                    points="22,2 41,12 41,32 22,42 3,32 3,12"
-                                    fill={isCompactChat ? "rgba(196, 42, 42, 0.92)" : "rgba(110, 22, 26, 0.88)"}
-                                    stroke="#8ae3dd"
-                                    strokeWidth="2.4"
-                                />
-                                <polygon
-                                    points="22,6 37,14 37,30 22,38 7,30 7,14"
-                                    fill="none"
-                                    stroke="rgba(255, 160, 160, 0.45)"
-                                    strokeWidth="1"
-                                />
-                            </svg>
-                            <span>▤</span>
-                        </button>
-
-                        {/* MIDDLE-RIGHT HEXAGON: Stream Overlay / Click-Through Mode (Alt+O) */}
-                        <button
-                            type="button"
-                            className={classNames("pso-tri-hex pso-tri-hex--diamond-right", {
-                                "pso-tri-hex--active": isStreamOverlay,
-                            })}
-                            onClick={() => executeHexAction("stream_overlay")}
-                            title={
-                                isStreamOverlay
-                                    ? "Restore Full PSO Matrix HUD (Alt+O)"
-                                    : "Pin Ep.4 Hex Overlay — Stream Mode (Alt+O)"
-                            }
-                            data-testid="pso-stream-overlay-toggle"
-                        >
-                            <svg viewBox="0 0 44 44">
-                                <polygon
-                                    points="22,2 41,12 41,32 22,42 3,32 3,12"
-                                    fill={isStreamOverlay ? "rgba(218, 142, 38, 0.92)" : "rgba(86, 44, 16, 0.88)"}
-                                    stroke="#8ae3dd"
-                                    strokeWidth="2.4"
-                                />
-                                <polygon
-                                    points="22,6 37,14 37,30 22,38 7,30 7,14"
-                                    fill="none"
-                                    stroke="rgba(255, 214, 150, 0.42)"
-                                    strokeWidth="1"
-                                />
-                            </svg>
-                            <span>⟁</span>
-                        </button>
-
-                        {/* BOTTOM-CENTER HEXAGON: HUD & Wallpaper Tuner + Symbol Maker Access */}
-                        <button
-                            ref={tunerToggleRef}
-                            type="button"
-                            className={classNames("pso-tri-hex pso-tri-hex--diamond-bottom", {
-                                "pso-tri-hex--active": isTunerOpen,
-                            })}
-                            onClick={() => setIsTunerOpen((prev) => !prev)}
-                            title="PSO HUD & Wallpaper Tuner + Hex Tray Customizer"
-                            data-testid="pso-tuner-toggle"
-                        >
-                            <svg viewBox="0 0 44 44">
-                                <polygon
-                                    points="22,2 41,12 41,32 22,42 3,32 3,12"
-                                    fill={isTunerOpen ? "rgba(42, 168, 92, 0.94)" : "rgba(18, 86, 48, 0.9)"}
-                                    stroke="#8ae3dd"
-                                    strokeWidth="2.4"
-                                />
-                                <polygon
-                                    points="22,6 37,14 37,30 22,38 7,30 7,14"
-                                    fill="none"
-                                    stroke="rgba(160, 255, 196, 0.45)"
-                                    strokeWidth="1"
-                                />
-                            </svg>
-                            <span>⚙</span>
-                        </button>
-                        </>
-                        )}
+                        <PsoCompactHexCluster
+                            slots={isCompactChat ? compactHexSlots : dockedHexSlots}
+                        />
                     </div>
                 </div>
             </div>
