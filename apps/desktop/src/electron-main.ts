@@ -47,7 +47,8 @@ import { setupMediaAuth } from "./media-auth.js";
 import { handleWindowClose, revealMainWindow } from "./window-close.js";
 import { type RendererRecovery, setupRendererRecovery } from "./renderer-recovery.js";
 import { getBuildConfig } from "./build-config.js";
-import { getAsarPath } from "./asar.js";
+import { currentAsarPath, getAsarPath } from "./asar.js";
+import { clearHotWebapps } from "./webapp-hot-reload.js";
 import { getIconPath } from "./icon.js";
 import { getArgs } from "./args.js";
 import { type ConfigOptions, loadConfig } from "./config.js";
@@ -148,11 +149,11 @@ if (store.get("disableHardwareAcceleration")) {
 app.on("ready", async () => {
     console.debug("Reached Electron ready state");
 
-    let asarPath: string;
     let config: ConfigOptions;
 
     try {
-        asarPath = await getAsarPath();
+        await getAsarPath();
+        clearHotWebapps();
         config = await loadConfig(args.localConfigPath);
     } catch (e) {
         console.log("App setup failed: exiting", e);
@@ -205,7 +206,7 @@ app.on("ready", async () => {
 
         let baseDir: string;
         if (target[1] === "webapp") {
-            baseDir = asarPath;
+            baseDir = currentAsarPath();
         } else {
             callback({ error: -6 }); // FILE_NOT_FOUND
             return;
@@ -480,9 +481,6 @@ app.on("ready", async () => {
 
     // Register global PSO HUD overlay shortcuts so they work even when a background window/game has OS focus
     try {
-        globalShortcut.register("Alt+G", () => {
-            global.mainWindow?.webContents.send("psoHudEvent", { type: "toggleClickThrough" });
-        });
         globalShortcut.register("Alt+C", () => {
             global.mainWindow?.webContents.send("psoHudEvent", { type: "toggleCompactChat" });
         });

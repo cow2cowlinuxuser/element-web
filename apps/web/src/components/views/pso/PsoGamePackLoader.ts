@@ -414,6 +414,14 @@ export async function loadPsoUiXvmSheet(url: string): Promise<PsoDecodedXvrTextu
     }
 }
 
+/** Raw RGBA pixels of every texture in an extracted `.xvm` sheet, or null if the sheet is not available. */
+export async function loadPsoUiXvmPixels(
+    url: string,
+): Promise<ReadonlyArray<{ width: number; height: number; rgba: Uint8Array } | undefined> | null> {
+    await loadPsoUiXvmSheet(url);
+    return cachedXvmPixels.get(url) ?? null;
+}
+
 /**
  * Crops one sprite out of a texture inside an extracted `.xvm` sheet and returns it as a PNG data URL.
  * `rect` is `[x, y, width, height]` in texture pixels. Returns null if the sheet is not available.

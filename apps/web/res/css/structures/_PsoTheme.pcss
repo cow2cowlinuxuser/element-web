@@ -2652,63 +2652,182 @@ body.pso-compact-chat-mode:not(.pso-unified-guild-stage) .mx_RoomView_wrapper {
         0 12px 32px rgb(0, 0, 0, 0.78) !important;
 }
 
-body.pso-compact-chat-mode.pso-compact-overlays-hidden:not(.pso-unified-guild-stage) .mx_RoomView_wrapper {
-    bottom: 42px !important;
-    height: min(430px, calc(100vh - 58px)) !important;
-}
-
 body.pso-compact-chat-mode .mx_RoomHeader {
     min-height: 34px !important;
     padding: 4px 10px !important;
 }
 
-body.pso-compact-chat-mode.pso-compact-overlays-hidden .mx_RoomHeader {
-    display: none !important;
+/* The chat box unfolds downward and folds upward in row-sized steps, like the PSO menu windows. */
+@keyframes pso-compact-unfold {
+    from {
+        clip-path: inset(0 0 100% 0);
+    }
+    to {
+        clip-path: inset(0 0 0 0);
+    }
 }
 
-.pso-compact-restore-bar {
-    position: fixed;
-    right: 16px;
-    bottom: 72px;
-    z-index: 625;
+@keyframes pso-compact-fold {
+    from {
+        clip-path: inset(0 0 0 0);
+    }
+    to {
+        clip-path: inset(0 0 100% 0);
+    }
+}
+
+body.pso-compact-chat-mode.pso-compact-unfolding .mx_RoomView_wrapper {
+    animation: pso-compact-unfold 400ms steps(8, end) both;
+}
+
+body.pso-compact-chat-mode.pso-compact-folding .mx_RoomView_wrapper {
+    animation: pso-compact-fold 400ms steps(8, end) both;
+    pointer-events: none !important;
+}
+
+/* Folded away: kept laid out so the timeline keeps its scroll position for when it comes back. */
+body.pso-compact-chat-mode.pso-compact-chat-hidden .mx_RoomView_wrapper {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* Compact-mode 4-hex cluster, drawn from the game's HUD cluster frame and icons at 0.8 scale. */
+.pso-hex-diamond-group--compact {
+    width: 120px;
+    height: 86px;
+}
+
+.pso-hex-diamond-group--compact .pso-hex-diamond-drag-handle {
+    left: 51px;
+    top: 34px;
+}
+
+.pso-compact-hex-cluster {
+    position: absolute;
+    inset: 0;
+}
+
+.pso-compact-hex-frame {
+    position: absolute;
+    inset: 0;
+    width: 120px;
+    height: 86px;
+    pointer-events: none;
+    user-select: none;
+}
+
+.pso-compact-hex {
+    position: absolute;
+    width: 40px;
+    height: 34px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
     display: flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    filter: brightness(0.92);
+    transition: filter 0.12s ease;
 }
 
-.pso-compact-restore-bar--hidden-overlays {
-    bottom: 8px;
-}
-
-.pso-compact-restore-btn {
-    padding: 4px 10px;
-    border-radius: 5px;
-    background: linear-gradient(180deg, rgb(12, 58, 68, 0.94) 0%, rgb(4, 22, 28, 0.96) 100%);
-    border: 1.5px solid var(--pso-fg-cyan-main);
-    color: var(--pso-fg-cyan-ice);
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
+button.pso-compact-hex {
     cursor: pointer;
-    box-shadow: 0 4px 14px rgb(0, 0, 0, 0.72);
-    transition:
-        background 0.14s ease,
-        border-color 0.14s ease,
-        color 0.14s ease;
 }
 
-.pso-compact-restore-btn:hover {
-    border-color: var(--pso-amber-bright);
-    color: #fff8e6;
-    background: linear-gradient(180deg, rgb(22, 78, 92, 0.98) 0%, rgb(8, 34, 42, 0.98) 100%);
+button.pso-compact-hex:hover,
+button.pso-compact-hex:focus-visible {
+    filter: brightness(1.45);
 }
 
-.pso-compact-restore-btn--primary {
-    border-color: var(--pso-amber-bright);
-    color: var(--pso-amber-bright);
-    box-shadow:
-        0 4px 14px rgb(0, 0, 0, 0.78),
-        0 0 10px rgb(242, 198, 80, 0.28);
+.pso-compact-hex--lit {
+    filter: brightness(1.18);
+}
+
+.pso-compact-hex img,
+.pso-compact-hex svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    user-select: none;
+}
+
+.pso-compact-hex span {
+    position: relative;
+    font-size: 14px;
+    color: #cfe3e6;
+    text-shadow: 0 1px 2px #000000;
+}
+
+.pso-compact-hex--top {
+    left: 40px;
+    top: 5px;
+}
+
+.pso-compact-hex--left {
+    left: 3px;
+    top: 26px;
+}
+
+.pso-compact-hex--right {
+    left: 77px;
+    top: 26px;
+}
+
+.pso-compact-hex--bottom {
+    left: 40px;
+    top: 46px;
+}
+
+/* Without the extracted frame, give the fallback polygons the game's interlocking spacing. */
+.pso-compact-hex-cluster:not(.pso-compact-hex-cluster--sprites) .pso-compact-hex {
+    clip-path: none;
+}
+
+/* White PSO caption text, scrolled through a translucent side window while the compact chat is folded away. */
+.pso-message-ticker {
+    position: fixed;
+    right: 16px;
+    bottom: 102px;
+    z-index: 38;
+    width: min(360px, calc(100vw - 32px));
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: rgb(0, 10, 14, 0.42);
+    border-radius: 4px;
+    pointer-events: none;
+}
+
+.pso-message-ticker-line {
+    transition: opacity 0.9s ease;
+}
+
+.pso-message-ticker-line--fading {
+    opacity: 0;
+}
+
+.pso-bitmap-text {
+    display: block;
+}
+
+.pso-bitmap-text--fallback {
+    font-family: Tahoma, Verdana, sans-serif;
+    font-weight: 700;
+    color: #ffffff;
+    text-shadow:
+        1px 0 0 rgb(12, 16, 22),
+        -1px 0 0 rgb(12, 16, 22),
+        0 1px 0 rgb(12, 16, 22),
+        0 -1px 0 rgb(12, 16, 22),
+        1px 2px 2px rgb(0, 0, 0, 0.6);
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 /* Hide all images, videos, stickers, link preview cards, and media frames in Compact Text-Only Mode */

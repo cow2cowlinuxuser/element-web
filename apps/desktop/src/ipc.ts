@@ -12,6 +12,7 @@ import { randomArray } from "./utils.js";
 import { consumeDisplayMediaCallback } from "./displayMediaCallback.js";
 import Store, { clearData } from "./store.js";
 import { getConfig } from "./config.js";
+import { reloadWebapp } from "./webapp-hot-reload.js";
 
 type PsoSnapZone = "maximize" | "left" | "right" | "top-left" | "bottom-left" | "top-right" | "bottom-right" | null;
 
@@ -601,6 +602,10 @@ ipcMain.on("ipcCall", async function (_ev: IpcMainEvent, payload) {
             ret = true;
             break;
         }
+
+        case "psoReloadWebapp":
+            ret = await reloadWebapp(global.mainWindow);
+            break;
 
         case "psoWindowToggleMaximize": {
             const bounds = global.mainWindow.getBounds();

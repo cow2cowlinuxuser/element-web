@@ -109,7 +109,6 @@ export interface PsoFullGameMenuProps {
     isMicMuted: boolean;
     isDeafened: boolean;
     isCompactChat: boolean;
-    isClickThroughGlass: boolean;
     isStreamOverlay: boolean;
     onSelectGuildRoom: (roomId: string) => void;
     onSendSimpleMail: (targetName: string, messageText: string) => void;
@@ -119,7 +118,6 @@ export interface PsoFullGameMenuProps {
     onToggleMicMute: () => void;
     onToggleDeafen: () => void;
     onToggleCompactChat: () => void;
-    onToggleClickThroughGlass: () => void;
     onToggleStreamOverlay: () => void;
     onPlayUiSound: (kind: PsoUiSoundKind) => void;
     onMouseEnter?: () => void;
@@ -1382,10 +1380,6 @@ const PsoMenuSection: React.FC<PsoFullGameMenuProps & { section: PsoMenuSectionI
                     <button type="button" className="pso-gm-list-item" onClick={props.onToggleCompactChat}>
                         <span>Compact chat</span>
                         <span className="pso-gm-list-meta">{props.isCompactChat ? "ON" : "OFF"}</span>
-                    </button>
-                    <button type="button" className="pso-gm-list-item" onClick={props.onToggleClickThroughGlass}>
-                        <span>Click-through glass</span>
-                        <span className="pso-gm-list-meta">{props.isClickThroughGlass ? "ON" : "OFF"}</span>
                     </button>
                     <button type="button" className="pso-gm-list-item" onClick={props.onToggleStreamOverlay}>
                         <span>Stream overlay</span>

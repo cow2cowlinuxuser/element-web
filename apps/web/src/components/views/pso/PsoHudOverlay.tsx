@@ -29,6 +29,9 @@ import defaultDispatcher from "../../../dispatcher/dispatcher";
 import { Action } from "../../../dispatcher/actions";
 import { type ViewRoomPayload } from "../../../dispatcher/payloads/ViewRoomPayload";
 import RightPanelStore from "../../../stores/right-panel/RightPanelStore";
+import { MinimisedCallPipStore } from "../../../stores/MinimisedCallPipStore";
+import Modal from "../../../Modal";
+import QuestionDialog from "../dialogs/QuestionDialog";
 import {
     DEFAULT_SYMBOL_PRESETS,
     ensureThirtySymbolPresets,
@@ -56,6 +59,8 @@ import {
     type PsoMenuSectionId,
 } from "./PsoFullGameMenu";
 import { isAndroidClass } from "./PsoTechniqueEffects";
+import { PsoCompactHexCluster } from "./PsoCompactHexCluster";
+import { PsoMessageTicker } from "./PsoMessageTicker";
 
 const STORAGE_KEYS = {
     GLASS_ALPHA: "pso_hud_glass_alpha",
@@ -70,8 +75,7 @@ const STORAGE_KEYS = {
     DIAMOND_POS: "pso_hud_diamond_cluster_pos",
     POST_SYMBOL_TEXT_LOG: "pso_hud_post_symbol_text_log",
     COMPACT_CHAT: "pso_hud_compact_chat_mode",
-    COMPACT_OVERLAYS_HIDDEN: "pso_hud_compact_overlays_hidden",
-    CLICK_THROUGH: "pso_hud_click_through_glass",
+    COMPACT_CHAT_HIDDEN: "pso_hud_compact_chat_hidden",
     PIN_ALWAYS_ON_TOP: "pso_hud_pin_always_on_top",
     HEX_SLOTS: "pso_hud_hex_action_slots",
     LOBBY_PRESENTATION_MODE: "pso_hud_lobby_presentation_mode_v2",
@@ -104,12 +108,9 @@ export type PsoHexActionId =
     | "mute_mic"
     | "deafen_audio"
     | "join_leave_voice"
-    | "click_through"
     | "compact_chat"
     | "stream_overlay"
     | "transparent_mode"
-    | "snap_left"
-    | "snap_right"
     | "spotlight_search"
     | "party_inspector"
     | "quick_comm";
@@ -125,8 +126,8 @@ export interface PsoHexActionDef {
 }
 
 export const HEX_PRESETS: Record<"minimal" | "overlay" | "classic", PsoHexActionId[]> = {
-    minimal: ["mute_mic", "deafen_audio", "join_leave_voice", "click_through", "quick_comm"],
-    overlay: ["mute_mic", "deafen_audio", "symbol_rappy", "symbol_editor", "pso_lobby_3d", "click_through"],
+    minimal: ["mute_mic", "deafen_audio", "join_leave_voice", "compact_chat", "quick_comm"],
+    overlay: ["mute_mic", "deafen_audio", "symbol_rappy", "symbol_editor", "pso_lobby_3d", "compact_chat"],
     classic: [
         "symbol_rappy",
         "symbol_editor",
@@ -136,10 +137,12 @@ export const HEX_PRESETS: Record<"minimal" | "overlay" | "classic", PsoHexAction
         "screen_share",
         "mute_mic",
         "deafen_audio",
-        "click_through",
         "compact_chat",
     ],
 };
+
+/** Actions that no longer exist but may still be in a saved hex layout. */
+const RETIRED_HEX_ACTIONS: ReadonlySet<string> = new Set(["click_through", "snap_left", "snap_right"]);
 
 interface SymbolChatNotice {
     id: number;
@@ -197,7 +200,8 @@ function readInitialHexSlots(): PsoHexActionId[] {
         if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                return parsed as PsoHexActionId[];
+                const slots = parsed.filter((id): id is PsoHexActionId => !RETIRED_HEX_ACTIONS.has(id));
+                if (slots.length > 0) return slots;
             }
         }
     } catch {
@@ -238,6 +242,13 @@ function sendElectronIpc(name: string, ...args: unknown[]): void {
         // Ignore if not running inside Electron desktop shell
     }
 }
+
+function hasElectronIpc(): boolean {
+    return Boolean((window as unknown as { electron?: { send?: unknown } }).electron?.send);
+}
+
+/** Length of the compact chat box's stepped unfold/fold, matching the PSO menu window's row-by-row reveal. */
+const COMPACT_FOLD_MS = 400;
 
 function isEditableElement(el: Element | null): boolean {
     if (!el) return false;
@@ -545,19 +556,20 @@ export function PsoHudOverlay(): JSX.Element {
             return false;
         }
     });
-    const [isCompactOverlaysHidden, setIsCompactOverlaysHidden] = useState<boolean>(() => {
+    /** In compact mode, whether the chat box is folded away so only the hex cluster and message ticker show. */
+    const [isCompactChatHidden, setIsCompactChatHidden] = useState<boolean>(() => {
         try {
-            return localStorage.getItem(STORAGE_KEYS.COMPACT_OVERLAYS_HIDDEN) === "true";
+            return localStorage.getItem(STORAGE_KEYS.COMPACT_CHAT_HIDDEN) === "true";
         } catch {
             return false;
         }
     });
-    const [isClickThroughGlass, setIsClickThroughGlass] = useState<boolean>(() => {
-        try {
-            return localStorage.getItem(STORAGE_KEYS.CLICK_THROUGH) === "true";
-        } catch {
-            return false;
-        }
+    const [compactFoldPhase, setCompactFoldPhase] = useState<"idle" | "unfolding" | "folding">("idle");
+    const compactFoldTimerRef = useRef<number | null>(null);
+    /** What entering compact mode put away, so leaving it can bring it back. */
+    const compactStashRef = useRef<{ rightPanelRoomId: string | null; minimisedCall: boolean }>({
+        rightPanelRoomId: null,
+        minimisedCall: false,
     });
     const [pinAlwaysOnTop, setPinAlwaysOnTop] = useState<boolean>(() => {
         try {
@@ -609,6 +621,96 @@ export function PsoHudOverlay(): JSX.Element {
             [activeCall],
         ),
     );
+
+    const runCompactFold = useCallback((phase: "unfolding" | "folding", after?: () => void): void => {
+        if (compactFoldTimerRef.current !== null) window.clearTimeout(compactFoldTimerRef.current);
+        setCompactFoldPhase(phase);
+        compactFoldTimerRef.current = window.setTimeout(() => {
+            compactFoldTimerRef.current = null;
+            setCompactFoldPhase("idle");
+            after?.();
+        }, COMPACT_FOLD_MS);
+    }, []);
+
+    useEffect(
+        () => () => {
+            if (compactFoldTimerRef.current !== null) window.clearTimeout(compactFoldTimerRef.current);
+        },
+        [],
+    );
+
+    const enterCompactChat = useCallback((): void => {
+        // Anything docked beside the timeline would squeeze the floating chat box, so put it all away first.
+        const roomId = sdkContext.roomViewStore.getRoomId() ?? null;
+        const stash = { rightPanelRoomId: null as string | null, minimisedCall: false };
+        if (roomId && RightPanelStore.instance.isOpenForRoom(roomId)) {
+            RightPanelStore.instance.hide(roomId);
+            stash.rightPanelRoomId = roomId;
+        }
+        if (activeCall && !MinimisedCallPipStore.instance.getState().minimised) {
+            MinimisedCallPipStore.instance.setMinimised(true);
+            stash.minimisedCall = true;
+        }
+        compactStashRef.current = stash;
+        for (let i = 0; i < 8 && Modal.hasDialogs(); i++) {
+            if (!Modal.closeCurrentModal()) break;
+        }
+        setIsTunerOpen(false);
+        setIsSymbolEditorOpen(false);
+        setIsFullGameMenuOpen(false);
+        setShowHexCustomizer(false);
+        setIsQuickReplyOpen(false);
+        setIsStreamOverlay(false);
+        setIsCompactChatHidden(false);
+        setIsCompactChat(true);
+        runCompactFold("unfolding");
+        window.setTimeout(() => sendElectronIpc("psoReleaseFocusToBackground"), 40);
+    }, [activeCall, runCompactFold, sdkContext.roomViewStore]);
+
+    const exitCompactChat = useCallback((): void => {
+        const finish = (): void => {
+            setIsCompactChat(false);
+            setIsCompactChatHidden(false);
+            const stash = compactStashRef.current;
+            compactStashRef.current = { rightPanelRoomId: null, minimisedCall: false };
+            if (stash.rightPanelRoomId) RightPanelStore.instance.show(stash.rightPanelRoomId);
+            if (stash.minimisedCall) MinimisedCallPipStore.instance.setMinimised(false);
+        };
+        if (isCompactChatHidden) finish();
+        else runCompactFold("folding", finish);
+    }, [isCompactChatHidden, runCompactFold]);
+
+    const toggleCompactChat = useCallback((): void => {
+        if (isCompactChat) exitCompactChat();
+        else enterCompactChat();
+    }, [enterCompactChat, exitCompactChat, isCompactChat]);
+
+    /** Folds the compact chat box away (or back out) while staying in compact mode. */
+    const toggleCompactChatHidden = useCallback((): void => {
+        if (isCompactChatHidden) {
+            setIsCompactChatHidden(false);
+            runCompactFold("unfolding");
+        } else {
+            runCompactFold("folding", () => setIsCompactChatHidden(true));
+        }
+    }, [isCompactChatHidden, runCompactFold]);
+
+    const toggleCompactChatRef = useRef(toggleCompactChat);
+    toggleCompactChatRef.current = toggleCompactChat;
+
+    const reloadWebapp = useCallback(async (): Promise<void> => {
+        if (activeCall) {
+            const { finished } = Modal.createDialog(QuestionDialog, {
+                title: "Refresh Element?",
+                description: "Refreshing reloads the app and will drop the voice call you are in.",
+                button: "Refresh",
+            });
+            const [confirmed] = await finished;
+            if (!confirmed) return;
+        }
+        if (hasElectronIpc()) sendElectronIpc("psoReloadWebapp");
+        else window.location.reload();
+    }, [activeCall]);
 
     const [idleAudioMuted, setIdleAudioMuted] = useState(false);
     const [idleDeafened, setIdleDeafened] = useState<boolean>(() => readInitialDeafened());
@@ -904,8 +1006,9 @@ export function PsoHudOverlay(): JSX.Element {
         document.body.classList.add("pso-hud-theme");
         document.body.classList.toggle("pso-stream-overlay-mode", isStreamOverlay);
         document.body.classList.toggle("pso-compact-chat-mode", isCompactChat);
-        document.body.classList.toggle("pso-compact-overlays-hidden", isCompactChat && isCompactOverlaysHidden);
-        document.body.classList.toggle("pso-click-through-glass", isClickThroughGlass);
+        document.body.classList.toggle("pso-compact-chat-hidden", isCompactChat && isCompactChatHidden);
+        document.body.classList.toggle("pso-compact-unfolding", compactFoldPhase === "unfolding");
+        document.body.classList.toggle("pso-compact-folding", compactFoldPhase === "folding");
         document.body.classList.toggle(
             "pso-unified-guild-stage",
             isLobby3dOpen && lobbyPresentationMode === "unified_stage",
@@ -919,12 +1022,11 @@ export function PsoHudOverlay(): JSX.Element {
             isLobby3dOpen && lobbyPresentationMode === "unified_stage" && !isLobbyChatDockVisible,
         );
 
-        const isTransparent =
-            isStreamOverlay || isCompactChat || isClickThroughGlass || backdropMode === "transparent";
+        const isTransparent = isStreamOverlay || isCompactChat || backdropMode === "transparent";
         document.body.classList.toggle("pso-transparent-desktop", isTransparent);
         sendElectronIpc("setPsoTransparentMode", isTransparent);
 
-        const shouldPinTop = isStreamOverlay || isCompactChat || isClickThroughGlass || pinAlwaysOnTop;
+        const shouldPinTop = isStreamOverlay || isCompactChat || pinAlwaysOnTop;
         sendElectronIpc("setPsoAlwaysOnTop", shouldPinTop);
 
         try {
@@ -932,8 +1034,7 @@ export function PsoHudOverlay(): JSX.Element {
             localStorage.setItem(STORAGE_KEYS.SCANLINE_ALPHA, String(scanlineAlpha));
             localStorage.setItem(STORAGE_KEYS.BACKDROP_MODE, backdropMode);
             localStorage.setItem(STORAGE_KEYS.COMPACT_CHAT, String(isCompactChat));
-            localStorage.setItem(STORAGE_KEYS.COMPACT_OVERLAYS_HIDDEN, String(isCompactOverlaysHidden));
-            localStorage.setItem(STORAGE_KEYS.CLICK_THROUGH, String(isClickThroughGlass));
+            localStorage.setItem(STORAGE_KEYS.COMPACT_CHAT_HIDDEN, String(isCompactChatHidden));
             localStorage.setItem(STORAGE_KEYS.PIN_ALWAYS_ON_TOP, String(pinAlwaysOnTop));
             localStorage.setItem(STORAGE_KEYS.HEX_SLOTS, JSON.stringify(hexSlots));
             localStorage.setItem(STORAGE_KEYS.LOBBY_PRESENTATION_MODE, lobbyPresentationMode);
@@ -947,8 +1048,8 @@ export function PsoHudOverlay(): JSX.Element {
         backdropMode,
         isStreamOverlay,
         isCompactChat,
-        isCompactOverlaysHidden,
-        isClickThroughGlass,
+        isCompactChatHidden,
+        compactFoldPhase,
         pinAlwaysOnTop,
         hexSlots,
         isLobby3dOpen,
@@ -958,7 +1059,7 @@ export function PsoHudOverlay(): JSX.Element {
 
     // Smart hit-testing for Mouse & Keyboard Click-Through to windows behind the glass
     useEffect(() => {
-        const passThroughActive = isStreamOverlay || isCompactChat || isClickThroughGlass;
+        const passThroughActive = isStreamOverlay || isCompactChat;
         if (!passThroughActive) {
             if (lastIgnoreMouseRef.current) {
                 lastIgnoreMouseRef.current = false;
@@ -978,21 +1079,17 @@ export function PsoHudOverlay(): JSX.Element {
 
             const el = document.elementFromPoint(clientX, clientY);
             const overHudControl = Boolean(el?.closest(".pso-interactive"));
-            const overComposer = Boolean(
-                el?.closest(".mx_MessageComposer, .pso-quick-reply-bar, .mx_BasicMessageComposer"),
+            const overCompactChatWindow = Boolean(
+                el?.closest(".mx_RoomView_wrapper, .mx_MinimisedCallPill_floating, .mx_Dialog_wrapper"),
             );
-            const overCompactChatWindow = Boolean(el?.closest(".mx_RoomView_wrapper"));
 
             let shouldCaptureMouse = false;
             if (overHudControl || isTunerOpen || isQuickReplyOpen || isSymbolEditorOpen || isLobby3dOpen) {
                 shouldCaptureMouse = true;
             } else if (isStreamOverlay) {
                 shouldCaptureMouse = false;
-            } else if (isClickThroughGlass) {
-                // In Click-Through Glass mode, pass clicks through all glass panels except the message composer & HUD controls
-                shouldCaptureMouse = overComposer;
             } else if (isCompactChat) {
-                // In Compact Chat mode (without Click-Through lock), capture inside the floating chatbox, pass through outside it
+                // Capture inside the floating chatbox, pass through outside it
                 shouldCaptureMouse = overCompactChatWindow;
             }
 
@@ -1018,11 +1115,11 @@ export function PsoHudOverlay(): JSX.Element {
                 sendElectronIpc("setPsoIgnoreMouseEvents", false);
             }
         };
-    }, [isStreamOverlay, isCompactChat, isClickThroughGlass, isTunerOpen, isQuickReplyOpen, isSymbolEditorOpen, isLobby3dOpen]);
+    }, [isStreamOverlay, isCompactChat, isTunerOpen, isQuickReplyOpen, isSymbolEditorOpen, isLobby3dOpen]);
 
-    // Release keyboard focus back to the background window after sending a message in the room composer when pass-through is active
+    // Escape in pass-through modes hands keyboard focus back to the window behind
     useEffect(() => {
-        const passThroughActive = isStreamOverlay || isCompactChat || isClickThroughGlass;
+        const passThroughActive = isStreamOverlay || isCompactChat;
         if (!passThroughActive) return;
 
         const onComposerKeyUp = (e: KeyboardEvent): void => {
@@ -1031,20 +1128,12 @@ export function PsoHudOverlay(): JSX.Element {
                     document.activeElement.blur();
                 }
                 sendElectronIpc("psoReleaseFocusToBackground");
-            } else if (e.key === "Enter" && !e.shiftKey && isClickThroughGlass) {
-                // After hitting Enter to send a message while Click-Through Glass is locked on, return keyboard focus to the game/window behind
-                window.setTimeout(() => {
-                    if (document.activeElement instanceof HTMLElement) {
-                        document.activeElement.blur();
-                    }
-                    sendElectronIpc("psoReleaseFocusToBackground");
-                }, 60);
             }
         };
 
         window.addEventListener("keyup", onComposerKeyUp, true);
         return () => window.removeEventListener("keyup", onComposerKeyUp, true);
-    }, [isStreamOverlay, isCompactChat, isClickThroughGlass]);
+    }, [isStreamOverlay, isCompactChat]);
 
     // Listen for main-process psoHudEvent messages (Snap preview zones & Global Shortcuts when background window has focus)
     useEffect(() => {
@@ -1061,23 +1150,8 @@ export function PsoHudOverlay(): JSX.Element {
                 case "snapPreview":
                     setSnapPreviewZone(payload.zone ?? null);
                     break;
-                case "toggleClickThrough":
-                    setIsClickThroughGlass((prev) => {
-                        const next = !prev;
-                        if (next) {
-                            sendElectronIpc("psoReleaseFocusToBackground");
-                        }
-                        return next;
-                    });
-                    break;
                 case "toggleCompactChat":
-                    setIsCompactChat((prev) => {
-                        const next = !prev;
-                        if (next && isStreamOverlay) {
-                            setIsStreamOverlay(false);
-                        }
-                        return next;
-                    });
+                    toggleCompactChatRef.current();
                     break;
                 case "toggleStreamOverlay":
                     setIsStreamOverlay((prev) => !prev);
@@ -1099,7 +1173,7 @@ export function PsoHudOverlay(): JSX.Element {
         };
 
         anyWin.electron.on("psoHudEvent", handler);
-    }, [isStreamOverlay]);
+    }, []);
 
     // Listen for incoming room timeline & E2EE decrypted events (including custom non-message `io.pso.symbol_chat` & `io.pso.lobby_state` events)
     useEffect(() => {
@@ -1622,38 +1696,8 @@ export function PsoHudOverlay(): JSX.Element {
                     onJoinOrLeaveVoice();
                     break;
                 }
-                case "click_through": {
-                    setIsClickThroughGlass((prev) => {
-                        const next = !prev;
-                        showSymbolNotice({
-                            sender: profile.displayName,
-                            subtitle: next ? "GLASS CLICK-THRU // ON" : "GLASS CLICK-THRU // OFF",
-                            variant: "message",
-                            body: next
-                                ? "🖱️ Mouse & keyboard now pass through glass to windows behind (Alt+G to toggle)."
-                                : "🖱️ Normal Element window interaction restored.",
-                        });
-                        if (next) {
-                            window.setTimeout(() => sendElectronIpc("psoReleaseFocusToBackground"), 40);
-                        }
-                        return next;
-                    });
-                    break;
-                }
                 case "compact_chat": {
-                    setIsCompactChat((prev) => {
-                        const next = !prev;
-                        if (next && isStreamOverlay) {
-                            setIsStreamOverlay(false);
-                        }
-                        if (!next) {
-                            setIsCompactOverlaysHidden(false);
-                        }
-                        if (next) {
-                            window.setTimeout(() => sendElectronIpc("psoReleaseFocusToBackground"), 40);
-                        }
-                        return next;
-                    });
+                    toggleCompactChat();
                     break;
                 }
                 case "stream_overlay": {
@@ -1668,14 +1712,6 @@ export function PsoHudOverlay(): JSX.Element {
                 }
                 case "transparent_mode": {
                     setBackdropMode((prev) => (prev === "transparent" ? "pioneer2" : "transparent"));
-                    break;
-                }
-                case "snap_left": {
-                    sendElectronIpc("psoWindowSnapTo", "left");
-                    break;
-                }
-                case "snap_right": {
-                    sendElectronIpc("psoWindowSnapTo", "right");
                     break;
                 }
                 case "spotlight_search": {
@@ -1699,7 +1735,7 @@ export function PsoHudOverlay(): JSX.Element {
                             sendElectronIpc("setPsoIgnoreMouseEvents", false);
                             sendElectronIpc("psoFocusWindow");
                             window.setTimeout(() => quickReplyInputRef.current?.focus(), 40);
-                        } else if (isClickThroughGlass || isCompactChat || isStreamOverlay) {
+                        } else if (isCompactChat || isStreamOverlay) {
                             sendElectronIpc("psoReleaseFocusToBackground");
                         }
                         return next;
@@ -1711,9 +1747,9 @@ export function PsoHudOverlay(): JSX.Element {
         [
             activeCall,
             activeSymbolPresetIdx,
-            isClickThroughGlass,
             isCompactChat,
             isStreamOverlay,
+            toggleCompactChat,
             onJoinOrLeaveVoice,
             onToggleDeafen,
             onToggleMute,
@@ -1762,14 +1798,6 @@ export function PsoHudOverlay(): JSX.Element {
                 active: isLocalSharing,
             },
             {
-                id: "click_through",
-                shortName: "Click-Thru",
-                icon: "🖱️",
-                label: "Toggle Click-Through Glass — Pass Mouse & Keys Behind Window (Alt+G)",
-                color: isClickThroughGlass ? "#efc278" : "#8ae3dd",
-                active: isClickThroughGlass,
-            },
-            {
                 id: "compact_chat",
                 shortName: "Compact Chat",
                 icon: "▤",
@@ -1792,20 +1820,6 @@ export function PsoHudOverlay(): JSX.Element {
                 label: "Toggle OS Transparent Desktop Mode",
                 color: backdropMode === "transparent" ? "#efc278" : "#8ae3dd",
                 active: backdropMode === "transparent",
-            },
-            {
-                id: "snap_left",
-                shortName: "Snap Left",
-                icon: "◧",
-                label: "Snap Window to Left Half of Monitor",
-                color: "#8ae3dd",
-            },
-            {
-                id: "snap_right",
-                shortName: "Snap Right",
-                icon: "◨",
-                label: "Snap Window to Right Half of Monitor",
-                color: "#8ae3dd",
             },
             {
                 id: "quick_comm",
@@ -1878,7 +1892,6 @@ export function PsoHudOverlay(): JSX.Element {
             activeCall,
             backdropMode,
             isAudioMuted,
-            isClickThroughGlass,
             isCompactChat,
             isDeafened,
             isLocalSharing,
@@ -1930,10 +1943,19 @@ export function PsoHudOverlay(): JSX.Element {
         });
     }, []);
 
-    const openGameMenuAt = useCallback((tab: PsoMainMenuTabId, section: PsoMenuSectionId | null): void => {
-        setIsFullGameMenuOpen(true);
-        setGameMenuRequest((prev) => ({ tab, section, nonce: (prev?.nonce ?? 0) + 1 }));
-    }, []);
+    // The main menu is a gameplay pause menu: it only exists while the 3D lobby is up.
+    useEffect(() => {
+        if (!isLobby3dOpen) setIsFullGameMenuOpen(false);
+    }, [isLobby3dOpen]);
+
+    const openGameMenuAt = useCallback(
+        (tab: PsoMainMenuTabId, section: PsoMenuSectionId | null): void => {
+            if (!isLobby3dOpen) return;
+            setIsFullGameMenuOpen(true);
+            setGameMenuRequest((prev) => ({ tab, section, nonce: (prev?.nonce ?? 0) + 1 }));
+        },
+        [isLobby3dOpen],
+    );
 
     /** PSOBB function-key bar: index 0 = F1 ... 11 = F12. */
     const pressFunctionKey = useCallback(
@@ -1968,7 +1990,7 @@ export function PsoHudOverlay(): JSX.Element {
                     break;
                 case 8:
                     playUiMenuSound("cursor");
-                    setIsCompactChat((prev) => !prev);
+                    toggleCompactChat();
                     break;
                 case 9:
                     setIsFullGameMenuOpen(false);
@@ -1978,11 +2000,11 @@ export function PsoHudOverlay(): JSX.Element {
                     sendElectronIpc("psoWindowToggleFullScreen");
                     break;
                 case 11:
-                    setIsFullGameMenuOpen((prev) => !prev);
+                    if (isLobby3dOpen) setIsFullGameMenuOpen((prev) => !prev);
                     break;
             }
         },
-        [openGameMenuAt, playUiMenuSound, toggleFunctionKeyBar],
+        [isLobby3dOpen, openGameMenuAt, playUiMenuSound, toggleCompactChat, toggleFunctionKeyBar],
     );
 
     // Keyboard shortcuts: F12 PSOBB Main Menu, F1-F10 Function Keys, Alt+1..Alt+0 for Equipped Hex Quickbar, Alt+O / Alt+C / Alt+G, F11
@@ -1991,17 +2013,15 @@ export function PsoHudOverlay(): JSX.Element {
             const fKeyMatch = /^F([1-9]|1[0-2])$/.exec(e.key);
             if (fKeyMatch && !e.ctrlKey && !e.altKey && !e.metaKey) {
                 const index = Number(fKeyMatch[1]) - 1;
-                // F1-F10 only act as game keys while the PSO bar, lobby or menu is up; F11/F12 always do.
-                if (index >= 10 || isFullGameMenuOpen || isLobby3dOpen || showFunctionKeyBar) {
+                // F1-F10 only act as game keys while the PSO bar, lobby or menu is up; F12 only in the lobby; F11 always.
+                const isGameKey =
+                    index === 10 ||
+                    (index === 11 ? isLobby3dOpen : isFullGameMenuOpen || isLobby3dOpen || showFunctionKeyBar);
+                if (isGameKey) {
                     e.preventDefault();
                     pressFunctionKey(index);
                     return;
                 }
-            }
-            if (e.altKey && (e.key === "g" || e.key === "G")) {
-                e.preventDefault();
-                executeHexAction("click_through");
-                return;
             }
             if (e.altKey && (e.key === "o" || e.key === "O")) {
                 e.preventDefault();
@@ -2010,7 +2030,7 @@ export function PsoHudOverlay(): JSX.Element {
             }
             if (e.altKey && (e.key === "c" || e.key === "C")) {
                 e.preventDefault();
-                setIsCompactChat((prev) => !prev);
+                toggleCompactChat();
                 return;
             }
 
@@ -2039,6 +2059,7 @@ export function PsoHudOverlay(): JSX.Element {
         isStreamOverlay,
         pressFunctionKey,
         showFunctionKeyBar,
+        toggleCompactChat,
     ]);
 
     const onWallpaperUpload = (e: React.ChangeEvent<HTMLInputElement>): void => {
@@ -2073,21 +2094,21 @@ export function PsoHudOverlay(): JSX.Element {
             body: trimmed,
         });
         await sendRoomTextIfEnabled(trimmed, true);
-        if (isClickThroughGlass || isCompactChat || isStreamOverlay) {
+        if (isCompactChat || isStreamOverlay) {
             setIsQuickReplyOpen(false);
             window.setTimeout(() => sendElectronIpc("psoReleaseFocusToBackground"), 40);
         }
     };
 
     const onHudMouseEnter = (): void => {
-        if (isStreamOverlay || isCompactChat || isClickThroughGlass) {
+        if (isStreamOverlay || isCompactChat) {
             lastIgnoreMouseRef.current = false;
             sendElectronIpc("setPsoIgnoreMouseEvents", false);
         }
     };
 
     const onHudMouseLeave = (): void => {
-        if ((isStreamOverlay || isClickThroughGlass) && !isQuickReplyOpen && !isTunerOpen) {
+        if (isStreamOverlay && !isQuickReplyOpen && !isTunerOpen) {
             lastIgnoreMouseRef.current = true;
             sendElectronIpc("setPsoIgnoreMouseEvents", true);
             if (!isEditableElement(document.activeElement)) {
@@ -2182,7 +2203,7 @@ export function PsoHudOverlay(): JSX.Element {
             )}
 
             {/* FRAMELESS WINDOW DRAG TITLEBAR + SNAP / CLICK-THRU / WINDOW CONTROLS + RESIZE EDGES */}
-            {!isStreamOverlay && !(isCompactChat && isCompactOverlaysHidden) && (
+            {!isStreamOverlay && (
                 <>
                     <div
                         className="pso-window-titlebar pso-interactive"
@@ -2202,41 +2223,22 @@ export function PsoHudOverlay(): JSX.Element {
                                     {SNAP_ZONE_LABELS[snapPreviewZone]}
                                 </span>
                             )}
-                            {isClickThroughGlass && (
-                                <button
-                                    type="button"
-                                    className="pso-window-titlebar-badge pso-window-titlebar-badge--active"
-                                    onClick={() => executeHexAction("click_through")}
-                                    title="Click to disable Click-Through Glass (Alt+G)"
-                                >
-                                    🖱️ CLICK-THRU ACTIVE (Alt+G)
-                                </button>
-                            )}
-                            {isCompactChat && (
-                                <button
-                                    type="button"
-                                    className="pso-window-titlebar-badge pso-window-titlebar-badge--active"
-                                    onClick={() => setIsCompactOverlaysHidden(true)}
-                                    title="Hide top title bar & all HUD overlays — show only compact chat text"
-                                    data-testid="pso-compact-hide-overlays-btn"
-                                >
-                                    💬 HIDE BAR &amp; OVERLAYS
-                                </button>
-                            )}
                         </div>
                         <div className="pso-window-titlebar-actions">
-                            <button
-                                type="button"
-                                className={classNames("pso-window-ctrl-btn", {
-                                    "pso-window-ctrl-btn--active": isFullGameMenuOpen,
-                                })}
-                                onClick={() => setIsFullGameMenuOpen((prev) => !prev)}
-                                title="Main Menu (F12)"
-                                aria-label="Toggle PSOBB Full Game Menu"
-                                data-testid="pso-titlebar-game-menu-btn"
-                            >
-                                📋
-                            </button>
+                            {isLobby3dOpen && (
+                                <button
+                                    type="button"
+                                    className={classNames("pso-window-ctrl-btn", {
+                                        "pso-window-ctrl-btn--active": isFullGameMenuOpen,
+                                    })}
+                                    onClick={() => setIsFullGameMenuOpen((prev) => !prev)}
+                                    title="Main Menu (F12)"
+                                    aria-label="Toggle PSOBB Full Game Menu"
+                                    data-testid="pso-titlebar-game-menu-btn"
+                                >
+                                    📋
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className={classNames("pso-window-ctrl-btn", {
@@ -2250,25 +2252,6 @@ export function PsoHudOverlay(): JSX.Element {
                                 aria-label="Toggle PSOBB Function Key Bar"
                             >
                                 ⌨️
-                            </button>
-                            <button
-                                type="button"
-                                className={classNames("pso-window-ctrl-btn", {
-                                    "pso-window-ctrl-btn--active": isCompactChat && isCompactOverlaysHidden,
-                                })}
-                                onClick={() => {
-                                    if (!isCompactChat) {
-                                        setIsCompactChat(true);
-                                        setIsCompactOverlaysHidden(true);
-                                    } else {
-                                        setIsCompactOverlaysHidden((prev) => !prev);
-                                    }
-                                }}
-                                title="Compact Chat Text-Only Mode — Hide Title Bar & Overlays"
-                                aria-label="Hide Title Bar and Overlays in Compact Chat"
-                                data-testid="pso-titlebar-hide-overlays-action"
-                            >
-                                💬
                             </button>
                             <button
                                 type="button"
@@ -2315,35 +2298,6 @@ export function PsoHudOverlay(): JSX.Element {
                             </button>
                             <button
                                 type="button"
-                                className={classNames("pso-window-ctrl-btn", {
-                                    "pso-window-ctrl-btn--active": isClickThroughGlass,
-                                })}
-                                onClick={() => executeHexAction("click_through")}
-                                title="Toggle Click-Through Glass — Pass mouse & keyboard to window behind (Alt+G)"
-                                aria-label="Toggle Click-Through Glass"
-                            >
-                                🖱️
-                            </button>
-                            <button
-                                type="button"
-                                className="pso-window-ctrl-btn"
-                                onClick={() => sendElectronIpc("psoWindowSnapTo", "left")}
-                                title="Snap Window to Left Half"
-                                aria-label="Snap Left Half"
-                            >
-                                &#x25E7;
-                            </button>
-                            <button
-                                type="button"
-                                className="pso-window-ctrl-btn"
-                                onClick={() => sendElectronIpc("psoWindowSnapTo", "right")}
-                                title="Snap Window to Right Half"
-                                aria-label="Snap Right Half"
-                            >
-                                &#x25E8;
-                            </button>
-                            <button
-                                type="button"
                                 className="pso-window-ctrl-btn"
                                 onClick={() => sendElectronIpc("psoWindowMinimize")}
                                 title="Minimize"
@@ -2383,7 +2337,6 @@ export function PsoHudOverlay(): JSX.Element {
 
             {/* 2. TOP-LEFT PSO EPISODE IV PLAYER GAUGE + COMPACT PARTY VOICE STACK (Visible only in 3D Game, Compact Chat, or Stream Overlay) */}
             {(isStreamOverlay || isCompactChat || isLobby3dOpen) &&
-                !(isCompactChat && isCompactOverlaysHidden) &&
                 !isFullGameMenuOpen &&
                 placeInLobbyViewport(
                 <div
@@ -2412,10 +2365,8 @@ export function PsoHudOverlay(): JSX.Element {
                                     className="pso-orb-btn pso-orb-btn--b"
                                     onClick={() => {
                                         if (isStreamOverlay) setIsStreamOverlay(false);
-                                        else if (isCompactChat) {
-                                            setIsCompactOverlaysHidden(false);
-                                            setIsCompactChat(false);
-                                        } else if (isLobby3dOpen) setIsLobby3dOpen(false);
+                                        else if (isCompactChat) exitCompactChat();
+                                        else if (isLobby3dOpen) setIsLobby3dOpen(false);
                                     }}
                                     title="Exit Overlay / Compact Mode"
                                 >
@@ -2738,7 +2689,9 @@ export function PsoHudOverlay(): JSX.Element {
                 request={gameMenuRequest}
                 showFunctionKeyBar={showFunctionKeyBar}
                 onToggleOpen={(nextOpen) =>
-                    setIsFullGameMenuOpen((prev) => (typeof nextOpen === "boolean" ? nextOpen : !prev))
+                    setIsFullGameMenuOpen((prev) =>
+                        isLobby3dOpen && (typeof nextOpen === "boolean" ? nextOpen : !prev),
+                    )
                 }
                 onToggleFunctionKeyBar={toggleFunctionKeyBar}
                 displayName={profile.displayName}
@@ -2888,7 +2841,6 @@ export function PsoHudOverlay(): JSX.Element {
                 isMicMuted={isAudioMuted}
                 isDeafened={isDeafened}
                 isCompactChat={isCompactChat}
-                isClickThroughGlass={isClickThroughGlass}
                 isStreamOverlay={isStreamOverlay}
                 onSelectGuildRoom={(targetRoomId) => {
                     defaultDispatcher.dispatch<ViewRoomPayload>({
@@ -2906,7 +2858,6 @@ export function PsoHudOverlay(): JSX.Element {
                 onToggleMicMute={onToggleMute}
                 onToggleDeafen={onToggleDeafen}
                 onToggleCompactChat={() => executeHexAction("compact_chat")}
-                onToggleClickThroughGlass={() => executeHexAction("click_through")}
                 onToggleStreamOverlay={() => executeHexAction("stream_overlay")}
                 onPlayUiSound={playUiMenuSound}
                 onMouseEnter={onHudMouseEnter}
@@ -3071,7 +3022,7 @@ export function PsoHudOverlay(): JSX.Element {
                         className="pso-orb-btn pso-orb-btn--b"
                         onClick={() => {
                             setIsQuickReplyOpen(false);
-                            if (isClickThroughGlass || isCompactChat || isStreamOverlay) {
+                            if (isCompactChat || isStreamOverlay) {
                                 sendElectronIpc("psoReleaseFocusToBackground");
                             }
                         }}
@@ -3176,19 +3127,7 @@ export function PsoHudOverlay(): JSX.Element {
                     <label className="pso-tuner-checkbox">
                         <input
                             type="checkbox"
-                            checked={isClickThroughGlass}
-                            onChange={(e) => {
-                                const checked = e.target.checked;
-                                setIsClickThroughGlass(checked);
-                            }}
-                        />
-                        <span>Click-Through Glass (mouse &amp; keys to background, Alt+G)</span>
-                    </label>
-
-                    <label className="pso-tuner-checkbox">
-                        <input
-                            type="checkbox"
-                            checked={pinAlwaysOnTop || isClickThroughGlass || isCompactChat || isStreamOverlay}
+                            checked={pinAlwaysOnTop || isCompactChat || isStreamOverlay}
                             onChange={(e) => setPinAlwaysOnTop(e.target.checked)}
                         />
                         <span>Pin Window Always On Top of games/apps</span>
@@ -3378,53 +3317,12 @@ export function PsoHudOverlay(): JSX.Element {
                 </>
             )}
 
-            {/* 5B. BOTTOM-RIGHT RESTORE / OVERLAY TOGGLE BAR DIRECTLY BELOW THE FOCUSED COMPACT CHAT */}
-            {isCompactChat && (
-                <div
-                    className={classNames("pso-compact-restore-bar pso-interactive", {
-                        "pso-compact-restore-bar--hidden-overlays": isCompactOverlaysHidden,
-                    })}
-                    data-testid="pso-compact-restore-bar"
-                    onMouseEnter={onHudMouseEnter}
-                    onMouseLeave={onHudMouseLeave}
-                >
-                    {isCompactOverlaysHidden ? (
-                        <button
-                            type="button"
-                            className="pso-compact-restore-btn pso-compact-restore-btn--primary"
-                            onClick={() => setIsCompactOverlaysHidden(false)}
-                            title="Restore top title bar, player overlay, and hexagonal HUD controls"
-                            data-testid="pso-compact-restore-overlays-btn"
-                        >
-                            ▲ RESTORE TITLE BAR &amp; OVERLAYS
-                        </button>
-                    ) : (
-                        <button
-                            type="button"
-                            className="pso-compact-restore-btn"
-                            onClick={() => setIsCompactOverlaysHidden(true)}
-                            title="Hide top title bar & overlays — keep only chat text"
-                        >
-                            ▼ HIDE TITLE BAR &amp; OVERLAYS
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        className="pso-compact-restore-btn"
-                        onClick={() => {
-                            setIsCompactOverlaysHidden(false);
-                            setIsCompactChat(false);
-                        }}
-                        title="Exit Compact Chat and restore full Element window (Alt+C)"
-                        data-testid="pso-compact-exit-btn"
-                    >
-                        ⤢ RESTORE FULL APP
-                    </button>
-                </div>
+            {/* 5B. PSO-STYLE MESSAGE TICKER WHILE THE COMPACT CHAT BOX IS FOLDED AWAY */}
+            {isCompactChat && isCompactChatHidden && client && (
+                <PsoMessageTicker client={client} roomId={sdkContext.roomViewStore.getRoomId() ?? null} />
             )}
 
             {/* 6. BOTTOM EPISODE IV DYNAMIC-WIDTH HEXAGONAL ACTION PALETTE + 4-HEX CLUSTER + @BEAT TIME */}
-            {!(isCompactChat && isCompactOverlaysHidden) && (
             <div
                 className="pso-hex-bar-wrap pso-interactive"
                 data-testid="pso-hex-quickbar"
@@ -3491,7 +3389,11 @@ export function PsoHudOverlay(): JSX.Element {
                             : undefined
                     }
                 >
-                    <div className="pso-hex-diamond-group">
+                    <div
+                        className={classNames("pso-hex-diamond-group", {
+                            "pso-hex-diamond-group--compact": isCompactChat,
+                        })}
+                    >
                         {/* Center Drag Handle to Move the 4-Hexagon Quadrant Anywhere on Screen */}
                         <div
                             className="pso-hex-diamond-drag-handle"
@@ -3536,6 +3438,15 @@ export function PsoHudOverlay(): JSX.Element {
                         >
                             ✥
                         </div>
+                        {isCompactChat ? (
+                            <PsoCompactHexCluster
+                                isChatHidden={isCompactChatHidden}
+                                onToggleChat={toggleCompactChatHidden}
+                                onRestore={exitCompactChat}
+                                onRefresh={() => void reloadWebapp()}
+                            />
+                        ) : (
+                        <>
                         {/* TOP HEXAGON: Chatting (Quick SAY / Right-click for Symbol Chat Maker) */}
                         <button
                             type="button"
@@ -3659,20 +3570,21 @@ export function PsoHudOverlay(): JSX.Element {
                             </svg>
                             <span>⚙</span>
                         </button>
+                        </>
+                        )}
                     </div>
                     <div className="pso-beat-time-readout" data-testid="pso-beat-time">
                         {beatTime.clock} / internet time <strong>@ {beatTime.beat}</strong>
                     </div>
                 </div>
             </div>
-            )}
         </div>
     );
 
     return (
         <>
             {/* 1. PIONEER 2 / RAGOL ORBITAL SCENE OR CUSTOM WALLPAPER BACKDROP (Rendered in-place at z-index: 0 behind .mx_MatrixChat) */}
-            {!isStreamOverlay && !isCompactChat && !isClickThroughGlass && backdropMode !== "transparent" && (
+            {!isStreamOverlay && !isCompactChat && backdropMode !== "transparent" && (
                 <div className="pso-scene-backdrop" data-testid="pso-hud-backdrop" aria-hidden="true">
                     {backdropMode === "custom" && customWallpaper ? (
                         <div
