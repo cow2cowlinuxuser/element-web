@@ -2256,6 +2256,18 @@ export function PsoHudOverlay(): JSX.Element {
                             <button
                                 type="button"
                                 className={classNames("pso-window-ctrl-btn", {
+                                    "pso-window-ctrl-btn--active": isCompactChat,
+                                })}
+                                onClick={toggleCompactChat}
+                                title={isCompactChat ? "Restore Full Window (Alt+C)" : "Compact Chat (Alt+C)"}
+                                aria-label="Toggle Compact Chat"
+                                data-testid="pso-titlebar-compact-chat-btn"
+                            >
+                                💬
+                            </button>
+                            <button
+                                type="button"
+                                className={classNames("pso-window-ctrl-btn", {
                                     "pso-window-ctrl-btn--active": isLobby3dOpen,
                                 })}
                                 onClick={() => setIsLobby3dOpen((prev) => !prev)}

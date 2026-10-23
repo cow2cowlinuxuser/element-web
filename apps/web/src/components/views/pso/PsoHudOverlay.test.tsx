@@ -88,6 +88,17 @@ describe("PsoHudOverlay", () => {
         expect(screen.queryByTestId("pso-compact-hex-cluster")).toBeNull();
     });
 
+    it("toggles compact chat from the title bar button", async () => {
+        const PsoHudOverlay = wrapInSdkContext(UnwrappedPsoHudOverlay, sdkContext);
+        render(<PsoHudOverlay />);
+
+        await userEvent.click(screen.getByTestId("pso-titlebar-compact-chat-btn"));
+        expect(document.body).toHaveClass("pso-compact-chat-mode");
+
+        await userEvent.click(screen.getByTestId("pso-titlebar-compact-chat-btn"));
+        await waitFor(() => expect(document.body).not.toHaveClass("pso-compact-chat-mode"));
+    });
+
     it("closes the right panel when entering compact chat and reopens it on restore", async () => {
         sdkContext.roomViewStore.getRoomId = () => "!room:example.org";
         const isOpen = vi.spyOn(RightPanelStore.instance, "isOpenForRoom").mockReturnValue(true);
