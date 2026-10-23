@@ -29,36 +29,35 @@ interface TickerLine {
     addedAt: number;
 }
 
-function tickerText(ev: MatrixEvent): string | null {
+function tickerText(ev: MatrixEvent, room: Room | undefined): string | null {
     if (ev.getType() !== EventType.RoomMessage || ev.isRedacted()) return null;
     const content = ev.getContent();
     if (typeof content.body !== "string" || !content.body.trim()) return null;
     if (content["m.relates_to"]?.rel_type === "m.replace") return null;
     const sender = ev.sender?.name ?? ev.getSender() ?? "?";
     const body = content.body.replace(/^>.*\n?/gm, "").replace(/\s+/g, " ").trim();
-    return content.msgtype === "m.emote" ? `* ${sender} ${body}` : `${sender}: ${body}`;
+    const line = content.msgtype === "m.emote" ? `* ${sender} ${body}` : `${sender}: ${body}`;
+    // A DM is named after the other person, so the room prefix would just repeat the sender.
+    return room?.name && room.name !== sender ? `(${room.name}) ${line}` : line;
 }
 
 interface Props {
     client: MatrixClient;
-    roomId: string | null;
 }
 
 /**
- * While the compact chat box is folded away, new messages in the current room scroll through a translucent side
- * window in white PSO caption text, each fading out after a few seconds.
+ * While the compact chat box is folded away, new messages from every room scroll through a PSO-style side window
+ * in white caption text, each fading out after a few seconds.
  */
-export function PsoMessageTicker({ client, roomId }: Props): JSX.Element | null {
+export function PsoMessageTicker({ client }: Props): JSX.Element | null {
     const [lines, setLines] = useState<TickerLine[]>([]);
     const [now, setNow] = useState(() => Date.now());
 
     useEffect(() => {
-        setLines([]);
-        if (!roomId) return;
         const myUserId = client.getUserId();
 
         const push = (ev: MatrixEvent): void => {
-            const text = tickerText(ev);
+            const text = tickerText(ev, client.getRoom(ev.getRoomId()) ?? undefined);
             if (!text) return;
             const id = ev.getId() ?? `${ev.getTs()}-${text}`;
             setLines((prev) =>
@@ -73,7 +72,7 @@ export function PsoMessageTicker({ client, roomId }: Props): JSX.Element | null 
             removed: boolean,
             data: IRoomTimelineData,
         ): void => {
-            if (toStartOfTimeline || removed || !data.liveEvent || room?.roomId !== roomId) return;
+            if (toStartOfTimeline || removed || !data.liveEvent || !room) return;
             if (ev.getSender() === myUserId) return;
             if (ev.isEncrypted() && (ev.isBeingDecrypted() || ev.shouldAttemptDecryption())) {
                 ev.once(MatrixEventEvent.Decrypted, () => push(ev));
@@ -86,7 +85,7 @@ export function PsoMessageTicker({ client, roomId }: Props): JSX.Element | null 
         return () => {
             client.off(RoomEvent.Timeline, onTimeline);
         };
-    }, [client, roomId]);
+    }, [client]);
 
     useEffect(() => {
         if (lines.length === 0) return;

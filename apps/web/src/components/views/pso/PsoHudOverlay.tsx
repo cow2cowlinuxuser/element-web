@@ -699,6 +699,8 @@ export function PsoHudOverlay(): JSX.Element {
 
     const toggleCompactChatRef = useRef(toggleCompactChat);
     toggleCompactChatRef.current = toggleCompactChat;
+    const isCompactChatHiddenRef = useRef(isCompactChatHidden);
+    isCompactChatHiddenRef.current = isCompactChatHidden;
 
     const reloadWebapp = useCallback(async (): Promise<void> => {
         playUiMenuSoundRef.current("confirm");
@@ -1415,7 +1417,7 @@ export function PsoHudOverlay(): JSX.Element {
                     symbolSpec: DEFAULT_SYMBOL_PRESETS[0],
                     body,
                 });
-            } else if (isStreamOverlay || isCompactChat) {
+            } else if (isStreamOverlay || (isCompactChat && !isCompactChatHiddenRef.current)) {
                 showSymbolNotice({
                     sender: senderName,
                     subtitle: "COMM LOG // INCOMING",
@@ -3358,7 +3360,7 @@ export function PsoHudOverlay(): JSX.Element {
 
             {/* 5B. PSO-STYLE MESSAGE TICKER WHILE THE COMPACT CHAT BOX IS FOLDED AWAY */}
             {isCompactChat && isCompactChatHidden && client && (
-                <PsoMessageTicker client={client} roomId={sdkContext.roomViewStore.getRoomId() ?? null} />
+                <PsoMessageTicker client={client} />
             )}
 
             {/* 6. BOTTOM EPISODE IV DYNAMIC-WIDTH HEXAGONAL ACTION PALETTE + 4-HEX CLUSTER + @BEAT TIME */}
