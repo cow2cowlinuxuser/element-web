@@ -64,7 +64,7 @@ export interface PsoPartyMemberSummary {
     tpPct: number;
 }
 
-export type PsoUiSoundKind = "cursor" | "confirm" | "cancel" | "heal" | "tech";
+export type PsoUiSoundKind = "cursor" | "confirm" | "cancel" | "open" | "close" | "heal" | "tech";
 
 export interface PsoFullGameMenuProps {
     isOpen: boolean;
@@ -537,7 +537,7 @@ export const PsoFullGameMenu: React.FC<PsoFullGameMenuProps> = (props) => {
     const wasOpenRef = useRef(false);
     useEffect(() => {
         if (!isOpen) {
-            if (wasOpenRef.current) onPlayUiSound("cancel");
+            if (wasOpenRef.current) onPlayUiSound("close");
             wasOpenRef.current = false;
             setRevealedRows(0);
             setSubOpen(false);
@@ -545,7 +545,7 @@ export const PsoFullGameMenu: React.FC<PsoFullGameMenuProps> = (props) => {
             return;
         }
         wasOpenRef.current = true;
-        onPlayUiSound("confirm");
+        onPlayUiSound("open");
         setRevealedRows(1);
         const timer = window.setInterval(() => {
             setRevealedRows((n) => {

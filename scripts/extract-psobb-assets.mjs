@@ -6,8 +6,8 @@
  * Reads a user-supplied Phantasy Star Online: Blue Burst (PSOBB) installation
  * (`<psobb_dir>/data` and `<psobb_dir>/data/data.gsl`) and extracts all 198
  * 3D models (`.nj`, `.xj`), textures (`.xvm`), stage geometry/placements (`.rel`, `.dat`),
- * 64-bone skeletal animations (`.njm`), and soundtrack files (`.ogg`) into:
- *   `element-classic/apps/web/res/media/pso/{chars,scene,ogg}/`
+ * 64-bone skeletal animations (`.njm`), soundtrack files (`.ogg`), and UI sound effects (`.wav`) into:
+ *   `element-classic/apps/web/res/media/pso/{chars,scene,ogg,se}/`
  *
  * Usage:
  *   node scripts/extract-psobb-assets.mjs --source /path/to/PSOBB
@@ -371,6 +371,64 @@ const DIRECT_OGG_FILES = [
     "CITY.ogg", "GUILD.ogg", "LABO.ogg", "LOBBY.ogg", "MEDICAL.ogg", "SHOP.ogg", "slbgm_forest.ogg",
 ];
 
+// Sample indices are 0-based in bank order, matching PAC Manager's numbering.
+const SFX_TARGETS = [
+    { out: "cursor.wav", pac: "common.pac", index: 182 },
+    { out: "confirm.wav", pac: "common.pac", index: 183 },
+    { out: "menu_open.wav", pac: "common.pac", index: 185 },
+    { out: "menu_close.wav", pac: "common.pac", index: 186 },
+    { out: "use_item.wav", pac: "common.pac", index: 198 },
+    { out: "cancel.wav", pac: "common.pac", index: 203 },
+    { out: "game_start.wav", pac: "city.pac", index: 7 },
+];
+
+/**
+ * A `data/sound/*.pac` bank is a run of RIFF-less WAV samples: a 16-byte PCM `fmt ` body
+ * (optionally padded to 18), chunks such as `JUNK`/`cue `, then `data`, each aligned with padding.
+ */
+function splitPacSamples(buf) {
+    const headerAt = (h) => {
+        if (buf.readUInt16LE(h) !== 1) return null;
+        const channels = buf.readUInt16LE(h + 2);
+        const rate = buf.readUInt32LE(h + 4);
+        const block = buf.readUInt16LE(h + 12);
+        if ((channels !== 1 && channels !== 2) || rate < 4000 || rate > 96000) return null;
+        if (buf.readUInt32LE(h + 8) !== rate * block) return null;
+        const c = buf.readUInt16LE(h + 16) === 0 ? h + 18 : h + 16;
+        return /^[A-Za-z ]{4}$/.test(buf.toString("ascii", c, c + 4)) ? { h, chunks: c } : null;
+    };
+    const heads = [];
+    for (let h = 0; h + 28 <= buf.length; h += 2) {
+        const head = headerAt(h);
+        if (head) {
+            heads.push(head);
+            h += 26;
+        }
+    }
+    return heads.map((head, i) => {
+        const end = i + 1 < heads.length ? heads[i + 1].h : buf.length;
+        let pcm = Buffer.alloc(0);
+        for (let c = head.chunks; c + 8 <= end; ) {
+            const tag = buf.toString("ascii", c, c + 4);
+            const size = buf.readUInt32LE(c + 4);
+            if (tag === "data") {
+                pcm = buf.subarray(c + 8, Math.min(c + 8 + size, end));
+                break;
+            }
+            c += 8 + size;
+        }
+        const wav = Buffer.alloc(44);
+        wav.write("RIFF", 0, "ascii");
+        wav.writeUInt32LE(36 + pcm.length, 4);
+        wav.write("WAVEfmt ", 8, "ascii");
+        wav.writeUInt32LE(16, 16);
+        buf.copy(wav, 20, head.h, head.h + 16);
+        wav.write("data", 36, "ascii");
+        wav.writeUInt32LE(pcm.length, 40);
+        return Buffer.concat([wav, pcm]);
+    });
+}
+
 const NPC_BML_TARGETS = [
     { out: "npc_trunk", bml: "bm_n_trunk_i_body.bml", stripNjtl: true },
     { out: "npc_nurse", bml: "bm_n_nurse_i_body.bml", stripNjtl: true },
@@ -514,6 +572,7 @@ function main() {
     const sceneOut = path.join(outDir, "scene");
     const oggOut = path.join(outDir, "ogg");
     const uiOut = path.join(outDir, "ui");
+    const seOut = path.join(outDir, "se");
     fs.mkdirSync(charsOut, { recursive: true });
     fs.mkdirSync(sceneOut, { recursive: true });
     fs.mkdirSync(oggOut, { recursive: true });
@@ -574,6 +633,21 @@ function main() {
         const looseOgg = findFileCaseInsensitive(oggSrcDir, name);
         if (looseOgg) {
             writeAsset("ogg", name, fs.readFileSync(looseOgg));
+        }
+    }
+
+    // D2. UI sound effects from the `data/sound/*.pac` sample banks (.wav)
+    const soundSrcDir = findFileCaseInsensitive(dataDir, "sound");
+    if (soundSrcDir) {
+        fs.mkdirSync(seOut, { recursive: true });
+        const banks = new Map();
+        for (const target of SFX_TARGETS) {
+            if (!banks.has(target.pac)) {
+                const pacPath = findFileCaseInsensitive(soundSrcDir, target.pac);
+                banks.set(target.pac, pacPath ? splitPacSamples(fs.readFileSync(pacPath)) : []);
+            }
+            const sample = banks.get(target.pac)[target.index];
+            if (sample) writeAsset("se", target.out, sample);
         }
     }
 

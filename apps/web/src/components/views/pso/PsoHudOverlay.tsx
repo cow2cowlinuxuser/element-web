@@ -57,10 +57,24 @@ import {
     type PsoGameMenuRequest,
     type PsoMainMenuTabId,
     type PsoMenuSectionId,
+    type PsoUiSoundKind,
 } from "./PsoFullGameMenu";
 import { isAndroidClass } from "./PsoTechniqueEffects";
 import { PsoCompactHexCluster } from "./PsoCompactHexCluster";
 import { PsoMessageTicker } from "./PsoMessageTicker";
+import { playPsoSfx, preloadPsoSfx, type PsoSfxId } from "./PsoSfx";
+
+const UI_SOUND_CLIPS: Record<PsoUiSoundKind, { sfx: PsoSfxId | null; chime: PsoSymbolChatSpec["chime"] }> = {
+    cursor: { sfx: "cursor", chime: "comm" },
+    confirm: { sfx: "confirm", chime: "rappy" },
+    cancel: { sfx: "cancel", chime: "alert" },
+    open: { sfx: "menu_open", chime: "rappy" },
+    close: { sfx: "menu_close", chime: "alert" },
+    heal: { sfx: "use_item", chime: "cheer" },
+    tech: { sfx: null, chime: "rare" },
+};
+
+const STARTUP_SOUND_PLAYED_KEY = "pso_startup_sound_played";
 
 const STORAGE_KEYS = {
     GLASS_ALPHA: "pso_hud_glass_alpha",
@@ -622,6 +636,8 @@ export function PsoHudOverlay(): JSX.Element {
         [],
     );
 
+    const playUiMenuSoundRef = useRef<(kind: PsoUiSoundKind) => void>(() => {});
+
     const enterCompactChat = useCallback((): void => {
         // Anything docked beside the timeline would squeeze the floating chat box, so put it all away first.
         const roomId = sdkContext.roomViewStore.getRoomId() ?? null;
@@ -647,6 +663,7 @@ export function PsoHudOverlay(): JSX.Element {
         setIsCompactChatHidden(false);
         setIsCompactChat(true);
         runCompactFold("unfolding");
+        playUiMenuSoundRef.current("open");
         window.setTimeout(() => sendElectronIpc("psoReleaseFocusToBackground"), 40);
     }, [activeCall, runCompactFold, sdkContext.roomViewStore]);
 
@@ -659,6 +676,7 @@ export function PsoHudOverlay(): JSX.Element {
             if (stash.rightPanelRoomId) RightPanelStore.instance.show(stash.rightPanelRoomId);
             if (stash.minimisedCall) MinimisedCallPipStore.instance.setMinimised(false);
         };
+        playUiMenuSoundRef.current("close");
         if (isCompactChatHidden) finish();
         else runCompactFold("folding", finish);
     }, [isCompactChatHidden, runCompactFold]);
@@ -670,6 +688,7 @@ export function PsoHudOverlay(): JSX.Element {
 
     /** Folds the compact chat box away (or back out) while staying in compact mode. */
     const toggleCompactChatHidden = useCallback((): void => {
+        playUiMenuSoundRef.current(isCompactChatHidden ? "open" : "close");
         if (isCompactChatHidden) {
             setIsCompactChatHidden(false);
             runCompactFold("unfolding");
@@ -682,6 +701,7 @@ export function PsoHudOverlay(): JSX.Element {
     toggleCompactChatRef.current = toggleCompactChat;
 
     const reloadWebapp = useCallback(async (): Promise<void> => {
+        playUiMenuSoundRef.current("confirm");
         if (activeCall) {
             const { finished } = Modal.createDialog(QuestionDialog, {
                 title: "Refresh Element?",
@@ -1911,16 +1931,31 @@ export function PsoHudOverlay(): JSX.Element {
     }, []);
 
     const playUiMenuSound = useCallback(
-        (kind: "cursor" | "confirm" | "cancel" | "heal" | "tech"): void => {
+        (kind: PsoUiSoundKind): void => {
             if (isDeafened) return;
-            if (kind === "cursor") playPsoSymbolChime("comm");
-            else if (kind === "confirm") playPsoSymbolChime("rappy");
-            else if (kind === "cancel") playPsoSymbolChime("alert");
-            else if (kind === "heal") playPsoSymbolChime("cheer");
-            else playPsoSymbolChime("rare");
+            const { sfx, chime } = UI_SOUND_CLIPS[kind];
+            if (!sfx) {
+                playPsoSymbolChime(chime);
+                return;
+            }
+            void playPsoSfx(sfx).then((played) => {
+                if (!played) playPsoSymbolChime(chime);
+            });
         },
         [isDeafened],
     );
+    playUiMenuSoundRef.current = playUiMenuSound;
+
+    useEffect(() => {
+        preloadPsoSfx();
+        try {
+            if (sessionStorage.getItem(STARTUP_SOUND_PLAYED_KEY)) return;
+            sessionStorage.setItem(STARTUP_SOUND_PLAYED_KEY, "1");
+        } catch {
+            // ignore
+        }
+        void playPsoSfx("game_start");
+    }, []);
 
     const toggleFunctionKeyBar = useCallback((): void => {
         setShowFunctionKeyBar((prev) => {
