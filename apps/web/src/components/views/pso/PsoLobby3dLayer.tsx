@@ -12,6 +12,7 @@ import React, { useCallback, useEffect, useRef, useState, type JSX } from "react
 import classNames from "classnames";
 
 import { playPsoSymbolChime, type PsoSymbolChatSpec } from "./PsoSymbolChatMaker";
+import { playPsoBgm } from "./PsoBgm";
 import {
     buildTechEffectMeshes,
     getTechSpec,
@@ -2815,14 +2816,7 @@ export function PsoLobby3dLayer({
         if (!isBgmPlaying) return;
 
         if (bgmTrack !== "synth") {
-            const audio = new Audio(`media/pso/ogg/${bgmTrack}`);
-            audio.loop = true;
-            audio.volume = 0.32;
-            void audio.play().catch(() => {});
-            return () => {
-                audio.pause();
-                audio.src = "";
-            };
+            return playPsoBgm(`media/pso/ogg/${bgmTrack}`, 0.32);
         }
 
         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
