@@ -371,14 +371,15 @@ const DIRECT_OGG_FILES = [
     "CITY.ogg", "GUILD.ogg", "LABO.ogg", "LOBBY.ogg", "MEDICAL.ogg", "SHOP.ogg", "slbgm_forest.ogg",
 ];
 
-// Sample indices are 0-based in bank order, matching PAC Manager's numbering.
+// Sample indices are 0-based in bank order, matching PAC Manager's numbering. The game's own sound ids
+// are noted where its menu code was traced: it opens windows and confirms with the same sound.
 const SFX_TARGETS = [
-    { out: "cursor.wav", pac: "common.pac", index: 182 },
-    { out: "confirm.wav", pac: "common.pac", index: 183 },
-    { out: "menu_open.wav", pac: "common.pac", index: 185 },
+    { out: "cursor.wav", pac: "common.pac", index: 182 }, // 0x56f
+    { out: "cancel.wav", pac: "common.pac", index: 183 }, // 0x570
     { out: "menu_close.wav", pac: "common.pac", index: 186 },
     { out: "use_item.wav", pac: "common.pac", index: 198 },
-    { out: "cancel.wav", pac: "common.pac", index: 203 },
+    { out: "confirm.wav", pac: "common.pac", index: 203 }, // 0x585
+    { out: "menu_open.wav", pac: "common.pac", index: 203 }, // 0x585
     { out: "game_start.wav", pac: "city.pac", index: 7 },
 ];
 
@@ -412,7 +413,9 @@ function splitPacSamples(buf) {
             const tag = buf.toString("ascii", c, c + 4);
             const size = buf.readUInt32LE(c + 4);
             if (tag === "data") {
-                pcm = buf.subarray(c + 8, Math.min(c + 8 + size, end));
+                // The size is repeated after a copy of the first two samples; audio starts after the repeat.
+                const start = c + 16 <= end && buf.readUInt32LE(c + 12) === size ? c + 16 : c + 8;
+                pcm = buf.subarray(start, Math.min(start + size, end));
                 break;
             }
             c += 8 + size;
